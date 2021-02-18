@@ -19,7 +19,7 @@ import (
 //
 //	maxSimultaneousReqs := 2
 //
-//	underTest := Visitor{
+//	underTest := ConcurrentVisitor{
 //		retriever:  retriever.New(client, "fedoraAdmin", "moo", "Test_VisitSimple"),
 //		semaphore:  make(chan int, maxSimultaneousReqs),
 //		uris:       make(chan string),

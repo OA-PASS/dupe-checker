@@ -1,5 +1,5 @@
 // Traverses PASS repository resources by following LDP containment relationships.  Retrieval of repository resources
-// occurs in parallel.  Callers are expected to launch a Visitor in a background goroutine, and read accepted resources
+// occurs in parallel.  Callers are expected to launch a ConcurrentVisitor in a background goroutine, and read accepted resources
 // and errors off of channels in separate goroutines.
 package visit
 
@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-type Visitor struct {
+type ConcurrentVisitor struct {
 	// retrieves LDP containers; invocation is gated by the semaphore
 	retriever retriever.Retriever
 	// gates the maximum number of requests which may be performed in parallel
@@ -20,12 +20,6 @@ type Visitor struct {
 	Containers chan model.LdpContainer
 	// Any errors encountered when traversing the repository are written to this channel
 	Errors chan error
-}
-
-type VisitErr struct {
-	Uri     string
-	Message string
-	Wrapped error
 }
 
 // descends into every container
@@ -41,18 +35,10 @@ var defaultAccept = func(c model.LdpContainer) bool {
 	return false
 }
 
-func (ve VisitErr) Error() string {
-	return fmt.Sprintf("visit: error visiting uri %s, %s", ve.Uri, ve.Message)
-}
-
-func (ve VisitErr) Unwrap() error {
-	return ve.Wrapped
-}
-
-// Constructs a new Visitor instance using the supplied Retriever.  At most maxConcurrent requests are performed in
+// Constructs a new ConcurrentVisitor instance using the supplied Retriever.  At most maxConcurrent requests are performed in
 // parallel.
-func New(retriever retriever.Retriever, maxConcurrent int) Visitor {
-	return Visitor{
+func New(retriever retriever.Retriever, maxConcurrent int) ConcurrentVisitor {
+	return ConcurrentVisitor{
 		retriever:  retriever,
 		semaphore:  make(chan int, maxConcurrent),
 		Containers: make(chan model.LdpContainer),
@@ -69,7 +55,7 @@ func New(retriever retriever.Retriever, maxConcurrent int) Visitor {
 //
 // Both filter and accept may be nil, in which case all resources are filtered for recursion, and all PASS resources are
 // accepted.
-func (v Visitor) Walk(startUri string, filter, accept func(container model.LdpContainer) bool) {
+func (v ConcurrentVisitor) Walk(startUri string, filter, accept func(container model.LdpContainer) bool) {
 	var c model.LdpContainer
 	var e error
 
@@ -101,7 +87,7 @@ func (v Visitor) Walk(startUri string, filter, accept func(container model.LdpCo
 	close(v.Errors)
 }
 
-func (v Visitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
+func (v ConcurrentVisitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
 	var e error
 	wg := sync.WaitGroup{}
 	wg.Add(len(c.Contains()))
