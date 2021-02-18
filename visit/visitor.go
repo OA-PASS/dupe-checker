@@ -8,9 +8,11 @@ import (
 )
 
 type Visitor struct {
-	retriever retriever.Retriever
-	semaphore chan int
-	//filter func (container model.LdpContainer) bool
+	retriever  retriever.Retriever
+	semaphore  chan int
+	uris       chan string
+	containers chan model.LdpContainer
+	errors     chan error
 }
 
 type VisitErr struct {
@@ -42,53 +44,57 @@ func (ve VisitErr) Unwrap() error {
 	return ve.Wrapped
 }
 
-func (v Visitor) walk(uri string, errors chan error, filter func(container model.LdpContainer) bool) chan model.LdpContainer {
-	containers := make(chan model.LdpContainer)
+func (v Visitor) Walk(uri string) {
+	// launch the visit goroutine which will block waiting for a list of uris.
+	go v.visit()
 
-	go func() {
-		for {
-			v.semaphore <- 1
-			go func() {
-				v.visit(uri, errors, func(c model.LdpContainer) {
-					<-v.semaphore
+	var c model.LdpContainer
+	var e error
 
-					if c.Uri() == "" {
-						errors <- fmt.Errorf("visit: missing container for %s", uri)
-						return
-					}
+	v.semaphore <- 1
+	if c, e = v.retriever.Get(uri); e != nil {
+		v.errors <- fmt.Errorf("visit: error retrieving %s: %s", uri, e.Error())
+		v.semaphore <- 1
+		return
+	}
 
-					if filter == nil {
-						if defaultFilter(c) {
-							containers <- c
-						}
-					} else if filter(c) {
-						containers <- c
-					}
+	if c.Uri() == "" {
+		v.errors <- fmt.Errorf("visit: missing container for %s", uri)
+		return
+	}
 
-					for _, containedUri := range c.Contains() {
-						v.walk(containedUri, errors, filter)
-					}
-				})
-			}()
-		}
-	}()
+	v.walkInternal(c)
 
-	return containers
+	return
 }
 
-func (v Visitor) visit(uri string, errors chan error, fn func(container model.LdpContainer)) {
+func (v Visitor) walkInternal(c model.LdpContainer) {
+	// Feeds a list of uris to visit(...) via the uris channel
+	for _, containedUri := range c.Contains() {
+		v.uris <- containedUri
+	}
+
+}
+
+func (v Visitor) visit() {
 	var e error
 	var c model.LdpContainer
 
-	defer fn(c)
+	for uri := range v.uris {
+		v.semaphore <- 1
+		go func(uri string) {
+			log.Printf("visit: retrieving %s", uri)
+			if c, e = v.retriever.Get(uri); e != nil {
+				v.errors <- VisitErr{
+					Uri:     uri,
+					Message: e.Error(),
+					Wrapped: e,
+				}
+			} else {
+				v.containers <- c
+			}
 
-	log.Printf("visit: retrieving %s", uri)
-
-	if c, e = v.retriever.Get(uri); e != nil {
-		errors <- VisitErr{
-			Uri:     uri,
-			Message: e.Error(),
-			Wrapped: e,
-		}
+			<-v.semaphore
+		}(uri)
 	}
 }
