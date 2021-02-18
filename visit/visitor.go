@@ -8,9 +8,9 @@ import (
 )
 
 type Visitor struct {
-	retriever  retriever.Retriever
-	semaphore  chan int
-	uris       chan string
+	retriever retriever.Retriever
+	semaphore chan int
+	//uris       chan string
 	containers chan model.LdpContainer
 	errors     chan error
 }
@@ -44,7 +44,7 @@ func (ve VisitErr) Unwrap() error {
 	return ve.Wrapped
 }
 
-func (v Visitor) Walk(uri string, accept func(container model.LdpContainer) bool) {
+func (v Visitor) Walk(uri string, filter, accept func(container model.LdpContainer) bool) {
 	var c model.LdpContainer
 	var e error
 
@@ -58,49 +58,34 @@ func (v Visitor) Walk(uri string, accept func(container model.LdpContainer) bool
 		return
 	}
 
-	v.walkInternal(c, accept)
+	v.walkInternal(c, filter, accept)
 
 	return
 }
 
-func (v Visitor) walkInternal(c model.LdpContainer, accept func(container model.LdpContainer) bool) {
+func (v Visitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
 	var e error
 
 	for _, uri := range c.Contains() {
-		log.Printf("visit: retrieving %s", uri)
-		if c, e = v.retriever.Get(uri); e != nil {
-			log.Printf("%v", VisitErr{
-				Uri:     uri,
-				Message: e.Error(),
-				Wrapped: e,
-			})
-		} else {
-			if accept(c) {
-				v.walkInternal(c, accept)
-			}
-		}
-	}
-}
-
-func (v Visitor) visit() {
-	var e error
-	var c model.LdpContainer
-
-	for uri := range v.uris {
 		v.semaphore <- 1
 		go func(uri string) {
 			log.Printf("visit: retrieving %s", uri)
 			if c, e = v.retriever.Get(uri); e != nil {
-				v.errors <- VisitErr{
+				<-v.semaphore
+				log.Printf("%v", VisitErr{
 					Uri:     uri,
 					Message: e.Error(),
 					Wrapped: e,
-				}
+				})
 			} else {
-				v.containers <- c
+				<-v.semaphore
+				if accept(c) {
+					v.containers <- c
+				}
+				if filter(c) {
+					v.walkInternal(c, filter, accept)
+				}
 			}
-
-			<-v.semaphore
 		}(uri)
 	}
 }
