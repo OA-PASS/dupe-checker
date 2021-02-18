@@ -73,6 +73,10 @@ func (v visitor) Walk(uri string, filter, accept func(container model.LdpContain
 		accept = defaultAccept
 	}
 
+	if accept(c) {
+		v.Containers <- c
+	}
+
 	v.walkInternal(c, filter, accept)
 
 	close(v.Containers)
