@@ -34,6 +34,14 @@ var defaultAccept = func(c model.LdpContainer) bool {
 	return false
 }
 
+func (ve VisitErr) Error() string {
+	return fmt.Sprintf("visit: error visiting uri %s, %s", ve.Uri, ve.Message)
+}
+
+func (ve VisitErr) Unwrap() error {
+	return ve.Wrapped
+}
+
 func New(retriever retriever.Retriever, maxConcurrent int) visitor {
 	return visitor{
 		retriever:  retriever,
@@ -41,14 +49,6 @@ func New(retriever retriever.Retriever, maxConcurrent int) visitor {
 		Containers: make(chan model.LdpContainer),
 		Errors:     make(chan error),
 	}
-}
-
-func (ve VisitErr) Error() string {
-	return fmt.Sprintf("visit: error visiting uri %s, %s", ve.Uri, ve.Message)
-}
-
-func (ve VisitErr) Unwrap() error {
-	return ve.Wrapped
 }
 
 func (v visitor) Walk(uri string, filter, accept func(container model.LdpContainer) bool) {
@@ -74,14 +74,17 @@ func (v visitor) Walk(uri string, filter, accept func(container model.LdpContain
 	}
 
 	v.walkInternal(c, filter, accept)
+
+	close(v.Containers)
+	close(v.Errors)
 }
 
 func (v visitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
 	var e error
 	wg := sync.WaitGroup{}
+	wg.Add(len(c.Contains()))
 	for _, uri := range c.Contains() {
 		v.semaphore <- 1
-		wg.Add(1)
 		go func(uri string) {
 			log.Printf("visit: retrieving %s", uri)
 			if c, e = v.retriever.Get(uri); e != nil {
@@ -91,7 +94,6 @@ func (v visitor) walkInternal(c model.LdpContainer, filter, accept func(containe
 					Message: e.Error(),
 					Wrapped: e,
 				})
-				wg.Done()
 			} else {
 				<-v.semaphore
 				if accept(c) {
@@ -105,6 +107,4 @@ func (v visitor) walkInternal(c model.LdpContainer, filter, accept func(containe
 		}(uri)
 	}
 	wg.Wait()
-	close(v.Containers)
-	close(v.Errors)
 }
