@@ -8,20 +8,23 @@ import (
 )
 
 const (
+	// HTTP media type used to request an N-triples representation of a resource
 	NTriplesMediaType = "application/n-triples"
 )
 
+// Retrieve the resource identified by the URI.  The resource is expected to be an LDP container.
 type Retriever interface {
 	Get(uri string) (model.LdpContainer, error)
 }
 
 type retriever struct {
 	httpClient *http.Client
-	username string
-	password string
-	useragent string
+	username   string
+	password   string
+	useragent  string
 }
 
+// Retrieve the resource identified by the URI.  The resource is expected to be an LDP container.
 func (r retriever) Get(uri string) (model.LdpContainer, error) {
 	var req *http.Request
 	var res *http.Response
@@ -54,12 +57,15 @@ func (r retriever) Get(uri string) (model.LdpContainer, error) {
 	return model.NewContainer(triples), nil
 }
 
+// Creates a new Retriever instance with the supplied client.  The remaining parameters may be empty strings.
+// If supplied, the username and password will be added to each request in an Authorization header.  If the useragent
+// string is supplied, each request will use that value in the User-Agent header.
 func New(httpClient *http.Client, username, password, useragent string) Retriever {
 	r := retriever{
 		httpClient: httpClient,
 		username:   username,
 		password:   password,
-		useragent: useragent,
+		useragent:  useragent,
 	}
 
 	return r

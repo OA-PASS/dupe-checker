@@ -1,3 +1,6 @@
+// Traverses PASS repository resources by following LDP containment relationships.  Retrieval of repository resources
+// occurs in parallel.  Callers are expected to launch a Visitor in a background goroutine, and read accepted resources
+// and errors off of channels in separate goroutines.
 package visit
 
 import (
@@ -8,11 +11,15 @@ import (
 	"sync"
 )
 
-type visitor struct {
-	retriever  retriever.Retriever
-	semaphore  chan int
+type Visitor struct {
+	// retrieves LDP containers; invocation is gated by the semaphore
+	retriever retriever.Retriever
+	// gates the maximum number of requests which may be performed in parallel
+	semaphore chan int
+	// Resources which are accepted are written to this channel
 	Containers chan model.LdpContainer
-	Errors     chan error
+	// Any errors encountered when traversing the repository are written to this channel
+	Errors chan error
 }
 
 type VisitErr struct {
@@ -42,8 +49,10 @@ func (ve VisitErr) Unwrap() error {
 	return ve.Wrapped
 }
 
-func New(retriever retriever.Retriever, maxConcurrent int) visitor {
-	return visitor{
+// Constructs a new Visitor instance using the supplied Retriever.  At most maxConcurrent requests are performed in
+// parallel.
+func New(retriever retriever.Retriever, maxConcurrent int) Visitor {
+	return Visitor{
 		retriever:  retriever,
 		semaphore:  make(chan int, maxConcurrent),
 		Containers: make(chan model.LdpContainer),
@@ -51,17 +60,26 @@ func New(retriever retriever.Retriever, maxConcurrent int) visitor {
 	}
 }
 
-func (v visitor) Walk(uri string, filter, accept func(container model.LdpContainer) bool) {
+// Given a starting URI, test each contained resource for recursion using the supplied filter.  Recurse into filtered
+// resources and test each resource for acceptance.  Accepted resources will be written to the Containers channel.  Note
+// the resource provided by the starting URI is tested for acceptance.
+//
+// This function blocks until all messages have been read off of the Errors and Containers channel.  Typically
+// Walk should be invoked within a goroutine while the Errors and Containers channel are read in separate goroutines.
+//
+// Both filter and accept may be nil, in which case all resources are filtered for recursion, and all PASS resources are
+// accepted.
+func (v Visitor) Walk(startUri string, filter, accept func(container model.LdpContainer) bool) {
 	var c model.LdpContainer
 	var e error
 
-	if c, e = v.retriever.Get(uri); e != nil {
-		log.Fatalf("visit: error retrieving %s: %s", uri, e.Error())
+	if c, e = v.retriever.Get(startUri); e != nil {
+		log.Fatalf("visit: error retrieving %s: %s", startUri, e.Error())
 		return
 	}
 
 	if c.Uri() == "" {
-		log.Fatalf("visit: missing container for %s", uri)
+		log.Fatalf("visit: missing container for %s", startUri)
 		return
 	}
 
@@ -83,7 +101,7 @@ func (v visitor) Walk(uri string, filter, accept func(container model.LdpContain
 	close(v.Errors)
 }
 
-func (v visitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
+func (v Visitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
 	var e error
 	wg := sync.WaitGroup{}
 	wg.Add(len(c.Contains()))

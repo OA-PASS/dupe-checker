@@ -1,3 +1,5 @@
+// +build integration
+
 package visit
 
 import (
@@ -17,7 +19,7 @@ import (
 //
 //	maxSimultaneousReqs := 2
 //
-//	underTest := visitor{
+//	underTest := Visitor{
 //		retriever:  retriever.New(client, "fedoraAdmin", "moo", "Test_VisitSimple"),
 //		semaphore:  make(chan int, maxSimultaneousReqs),
 //		uris:       make(chan string),
