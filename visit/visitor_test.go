@@ -1,7 +1,6 @@
 package visit
 
 import (
-	"dupe-checker/model"
 	"dupe-checker/retriever"
 	"github.com/stretchr/testify/assert"
 	"log"
@@ -18,12 +17,12 @@ import (
 //
 //	maxSimultaneousReqs := 2
 //
-//	underTest := Visitor{
+//	underTest := visitor{
 //		retriever:  retriever.New(client, "fedoraAdmin", "moo", "Test_VisitSimple"),
 //		semaphore:  make(chan int, maxSimultaneousReqs),
 //		uris:       make(chan string),
-//		containers: make(chan model.LdpContainer),
-//		errors:     make(chan error),
+//		Containers: make(chan model.LdpContainer),
+//		Errors:     make(chan error),
 //	}
 //
 //	go underTest.visit()
@@ -41,7 +40,7 @@ import (
 //
 //	//wg.Wait()
 //
-//	for result := range underTest.containers {
+//	for result := range underTest.Containers {
 //		assert.NotNil(t, result)
 //		assert.True(t, len(result.Contains()) > 0)
 //		assert.NotNil(t, result.Uri())
@@ -61,47 +60,46 @@ func TestVisitor_Walk(t *testing.T) {
 
 	maxSimultaneousReqs := 5
 
-	underTest := Visitor{
-		retriever:  retriever.New(client, "fedoraAdmin", "moo", "TestVisitor_Walk"),
-		semaphore:  make(chan int, maxSimultaneousReqs),
-		uris:       make(chan string),
-		containers: make(chan model.LdpContainer),
-		errors:     make(chan error),
-	}
+	underTest := New(retriever.New(client, "fedoraAdmin", "moo", "TestVisitor_Walk"), maxSimultaneousReqs)
 
-	filter := func(container model.LdpContainer) bool {
-		if ok, _ := container.IsPassResource(); !ok {
-			log.Printf("visit: recursing non-PASS resource %s", container.Uri())
-			return true
-		}
-		return false
-	}
-
-	accept := func(container model.LdpContainer) bool {
-		if ok, passType := container.IsPassResource(); ok {
-			log.Printf("visit: accepting PASS resource %s %s", container.Uri(), passType)
-			return true
-		}
-		return false
-	}
+	//filter := func(container model.LdpContainer) bool {
+	//	if ok, _ := container.IsPassResource(); !ok {
+	//		log.Printf("visit: recursing non-PASS resource %s", container.Uri())
+	//		return true
+	//	}
+	//	return false
+	//}
+	//
+	//accept := func(container model.LdpContainer) bool {
+	//	if ok, passType := container.IsPassResource(); ok {
+	//		log.Printf("visit: accepting PASS resource %s %s", container.Uri(), passType)
+	//		return true
+	//	}
+	//	return false
+	//}
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		underTest.Walk("http://fcrepo:8080/fcrepo/rest/files", filter, accept)
+		underTest.Walk("http://fcrepo:8080/fcrepo/rest/policies", nil, nil)
 		wg.Done()
 	}()
 
+	accepted := 0
+	wg.Add(1)
 	go func() {
-		for container := range underTest.containers {
+		for container := range underTest.Containers {
 			ok, passType := container.IsPassResource()
 			assert.True(t, ok)
 			assert.True(t, len(passType) > 0)
 			assert.True(t, len(container.Uri()) > 0)
 			log.Printf("read %s %s off channel", container.Uri(), passType)
+			accepted++
 		}
+		wg.Done()
 	}()
 
 	wg.Wait()
 	log.Printf("Walk complete.")
+	assert.Equal(t, 12, accepted)
 }

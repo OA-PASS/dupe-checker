@@ -5,14 +5,14 @@ import (
 	"dupe-checker/retriever"
 	"fmt"
 	"log"
+	"sync"
 )
 
-type Visitor struct {
-	retriever retriever.Retriever
-	semaphore chan int
-	//uris       chan string
-	containers chan model.LdpContainer
-	errors     chan error
+type visitor struct {
+	retriever  retriever.Retriever
+	semaphore  chan int
+	Containers chan model.LdpContainer
+	Errors     chan error
 }
 
 type VisitErr struct {
@@ -21,18 +21,25 @@ type VisitErr struct {
 	Wrapped error
 }
 
-const (
-	BreadthFirst = iota
-	DepthFirst
-)
-
-type Kind int
-
+// descends into every container
 var defaultFilter = func(c model.LdpContainer) bool { return true }
 
-func New(retriever retriever.Retriever) Visitor {
-	return Visitor{
-		retriever: retriever,
+// accepts every PASS resource
+var defaultAccept = func(c model.LdpContainer) bool {
+	if isPass, _ := c.IsPassResource(); isPass {
+		if len(c.Uri()) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func New(retriever retriever.Retriever, maxConcurrent int) visitor {
+	return visitor{
+		retriever:  retriever,
+		semaphore:  make(chan int, maxConcurrent),
+		Containers: make(chan model.LdpContainer),
+		Errors:     make(chan error),
 	}
 }
 
@@ -44,7 +51,7 @@ func (ve VisitErr) Unwrap() error {
 	return ve.Wrapped
 }
 
-func (v Visitor) Walk(uri string, filter, accept func(container model.LdpContainer) bool) {
+func (v visitor) Walk(uri string, filter, accept func(container model.LdpContainer) bool) {
 	var c model.LdpContainer
 	var e error
 
@@ -58,34 +65,46 @@ func (v Visitor) Walk(uri string, filter, accept func(container model.LdpContain
 		return
 	}
 
-	v.walkInternal(c, filter, accept)
+	if filter == nil {
+		filter = defaultFilter
+	}
 
-	return
+	if accept == nil {
+		accept = defaultAccept
+	}
+
+	v.walkInternal(c, filter, accept)
 }
 
-func (v Visitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
+func (v visitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
 	var e error
-
+	wg := sync.WaitGroup{}
 	for _, uri := range c.Contains() {
 		v.semaphore <- 1
+		wg.Add(1)
 		go func(uri string) {
 			log.Printf("visit: retrieving %s", uri)
 			if c, e = v.retriever.Get(uri); e != nil {
 				<-v.semaphore
-				log.Printf("%v", VisitErr{
+				v.Errors <- fmt.Errorf("%v", VisitErr{
 					Uri:     uri,
 					Message: e.Error(),
 					Wrapped: e,
 				})
+				wg.Done()
 			} else {
 				<-v.semaphore
 				if accept(c) {
-					v.containers <- c
+					v.Containers <- c
 				}
 				if filter(c) {
 					v.walkInternal(c, filter, accept)
 				}
 			}
+			wg.Done()
 		}(uri)
 	}
+	wg.Wait()
+	close(v.Containers)
+	close(v.Errors)
 }
