@@ -44,36 +44,42 @@ func (ve VisitErr) Unwrap() error {
 	return ve.Wrapped
 }
 
-func (v Visitor) Walk(uri string) {
-	// launch the visit goroutine which will block waiting for a list of uris.
-	go v.visit()
-
+func (v Visitor) Walk(uri string, accept func(container model.LdpContainer) bool) {
 	var c model.LdpContainer
 	var e error
 
-	v.semaphore <- 1
 	if c, e = v.retriever.Get(uri); e != nil {
-		v.errors <- fmt.Errorf("visit: error retrieving %s: %s", uri, e.Error())
-		v.semaphore <- 1
+		log.Fatalf("visit: error retrieving %s: %s", uri, e.Error())
 		return
 	}
 
 	if c.Uri() == "" {
-		v.errors <- fmt.Errorf("visit: missing container for %s", uri)
+		log.Fatalf("visit: missing container for %s", uri)
 		return
 	}
 
-	v.walkInternal(c)
+	v.walkInternal(c, accept)
 
 	return
 }
 
-func (v Visitor) walkInternal(c model.LdpContainer) {
-	// Feeds a list of uris to visit(...) via the uris channel
-	for _, containedUri := range c.Contains() {
-		v.uris <- containedUri
-	}
+func (v Visitor) walkInternal(c model.LdpContainer, accept func(container model.LdpContainer) bool) {
+	var e error
 
+	for _, uri := range c.Contains() {
+		log.Printf("visit: retrieving %s", uri)
+		if c, e = v.retriever.Get(uri); e != nil {
+			log.Printf("%v", VisitErr{
+				Uri:     uri,
+				Message: e.Error(),
+				Wrapped: e,
+			})
+		} else {
+			if accept(c) {
+				v.walkInternal(c, accept)
+			}
+		}
+	}
 }
 
 func (v Visitor) visit() {
