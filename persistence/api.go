@@ -39,6 +39,7 @@ const (
 )
 
 type Store interface {
-	Store(c model.LdpContainer, s State) error
+	StoreContainer(c model.LdpContainer, s State) error
+	StoreUri(containerUri string, s State) error
 	Retrieve(uri string) (State, error)
 }

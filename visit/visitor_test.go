@@ -3,7 +3,10 @@
 package visit
 
 import (
+	"dupe-checker/model"
+	"dupe-checker/persistence"
 	"dupe-checker/retriever"
+	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"log"
 	"net/http"
@@ -60,41 +63,54 @@ func TestVisitor_Walk(t *testing.T) {
 		Timeout: 120 * time.Second,
 	}
 
+	_ = &sqlite3.SQLiteDriver{}
+	store, _ := persistence.NewSqlLiteStore("file:/tmp/test.db?cache=shared&mode=rw", persistence.SqliteParams{
+		MaxIdleConn: 2,
+		MaxOpenConn: 2,
+	}, nil)
+
 	maxSimultaneousReqs := 5
 
 	underTest := New(retriever.New(client, "fedoraAdmin", "moo", "TestVisitor_Walk"), maxSimultaneousReqs)
 
-	//filter := func(container model.LdpContainer) bool {
-	//	// check persistence store:
-	//	//  if the container is processed, then don't descend.
-	//	//  if the container is not done, then descend.
-	//	//  if the container is not present, then descend.
-	//
-	//	// if the container is not a pass resource, descend.
-	//	if ok, _ := container.IsPassResource(); !ok {
-	//		log.Printf("visit: recursing non-PASS resource %s", container.Uri())
-	//		return true
-	//	}
-	//
-	//	// otherwise don't descend (i.e. it is a PASS resource, so there are no contained resources)
-	//	return false
-	//}
-	//
-	//accept := func(container model.LdpContainer) bool {
-	//	// check persistence store:
-	//	//   if the container is processed, then don't accept
-	//
-	//	if ok, passType := container.IsPassResource(); ok {
-	//		log.Printf("visit: accepting PASS resource %s %s", container.Uri(), passType)
-	//		return true
-	//	}
-	//	return false
-	//}
+	filter := func(container model.LdpContainer) bool {
+		// check persistence store:
+		//  if the container is processed, then don't descend.
+		if state, err := store.Retrieve(container.Uri()); err == nil && state == persistence.Processed {
+			return false
+		}
+
+		//  if the container is not done, then descend.
+		//  if the container is not present, then descend.
+
+		// if the container is not a pass resource, descend.
+		if ok, _ := container.IsPassResource(); !ok {
+			log.Printf("visit: recursing non-PASS resource %s", container.Uri())
+			return true
+		}
+
+		// otherwise don't descend (i.e. it is a PASS resource, so there are no contained resources)
+		return false
+	}
+
+	accept := func(container model.LdpContainer) bool {
+		// check persistence store:
+		//   if the container is processed, then don't accept
+		if state, err := store.Retrieve(container.Uri()); err == nil && state == persistence.Processed {
+			return false
+		}
+
+		if ok, passType := container.IsPassResource(); ok {
+			log.Printf("visit: accepting PASS resource %s %s", container.Uri(), passType)
+			return true
+		}
+		return false
+	}
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		underTest.Walk("http://fcrepo:8080/fcrepo/rest/policies", nil, nil)
+		underTest.Walk("http://fcrepo:8080/fcrepo/rest/policies", filter, accept)
 		wg.Done()
 	}()
 
@@ -109,6 +125,9 @@ func TestVisitor_Walk(t *testing.T) {
 			assert.True(t, len(container.Uri()) > 0)
 			log.Printf("read %s %s off channel", container.Uri(), passType)
 			accepted++
+			if err := store.StoreContainer(container, persistence.Processed); err != nil {
+				log.Printf("%s", err.Error())
+			}
 		}
 		wg.Done()
 	}()
@@ -117,11 +136,13 @@ func TestVisitor_Walk(t *testing.T) {
 		for event := range underTest.Events {
 			switch event.EventType {
 			case EventDescendStartContainer:
-				// Persist the starting of a container
+				store.StoreUri(event.Target, persistence.Started)
 			case EventDescendEndContainer:
-				// Persist the completion of a container
+				// when a container ends, we can check to make sure all of its children are processed and then mark
+				// the container as processed.
+				store.StoreUri(event.Target, persistence.Completed)
 			case EventProcessedForDupes:
-				// Persist the processing completion of a container
+				store.StoreUri(event.Target, persistence.Processed)
 			}
 		}
 		wg.Done()

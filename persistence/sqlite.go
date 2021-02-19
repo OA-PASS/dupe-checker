@@ -50,7 +50,7 @@ func NewSqlLiteStore(dsn string, params SqliteParams, ctx context.Context) (Stor
 		return sqlLiteEventStore{}, err
 	}
 
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS main.containers (container text UNIQUE NOT NULL, parent text, contains text, types text NOT NULL, state integer NOT NULL)")
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS main.containers (container text UNIQUE NOT NULL, parent text, contains text, types text, state integer NOT NULL)")
 
 	if err != nil {
 		return sqlLiteEventStore{}, err
@@ -88,7 +88,43 @@ func NewSqlLiteStore(dsn string, params SqliteParams, ctx context.Context) (Stor
 	}, nil
 }
 
-func (store sqlLiteEventStore) Store(c model.LdpContainer, s State) error {
+func (store sqlLiteEventStore) StoreUri(containerUri string, s State) error {
+	var r *sql.Rows
+	var err error
+
+	if r, err = store.db.Query("SELECT container FROM main.containers WHERE container=?", containerUri); err != nil {
+		return StoreErr{
+			fmt.Sprintf("Error querying containters table for the presence of LDPC with uri %s", containerUri),
+			err,
+		}
+	}
+
+	defer func() {
+		if err := r.Close(); err != nil {
+			log.Printf("failed to close *sql.Rows: %v", err)
+		}
+	}()
+
+	isUpdate := r.Next() // container exists
+	r.Close()
+
+	if isUpdate {
+		_, err = store.db.Exec("UPDATE main.containers SET state = ? WHERE container = ?", s, containerUri)
+	} else {
+		_, err = store.db.Exec("INSERT INTO main.containers (container, state) VALUES (?, ?)", containerUri, s)
+	}
+
+	if err != nil {
+		return StoreErr{
+			Message: fmt.Sprintf("Error storing state for LDPC uri %s: %s", containerUri, err.Error()),
+			Wrapped: err,
+		}
+	}
+
+	return nil
+}
+
+func (store sqlLiteEventStore) StoreContainer(c model.LdpContainer, s State) error {
 	var r *sql.Rows
 	var err error
 

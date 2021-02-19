@@ -94,7 +94,7 @@ func Test_DriverSimple(t *testing.T) {
 	isPass, _ := ldpc.IsPassResource()
 	assert.False(t, isPass)
 
-	if err = store.Store(ldpc, Processed); err != nil {
+	if err = store.StoreContainer(ldpc, Processed); err != nil {
 		log.Fatalf("store error: %v", err)
 	}
 
@@ -114,7 +114,7 @@ func Test_DriverSimple(t *testing.T) {
 		Obj:  o,
 	})
 
-	if err = store.Store(model.NewContainer(allTrips), Processed); err != nil {
+	if err = store.StoreContainer(model.NewContainer(allTrips), Processed); err != nil {
 		log.Fatalf("store error: %v", err)
 	}
 
