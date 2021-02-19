@@ -75,35 +75,37 @@ func TestVisitor_Walk(t *testing.T) {
 
 	filter := func(container model.LdpContainer) bool {
 		// check persistence store:
-		//  if the container is processed, then don't descend.
+		//  if the container state is Processed, then don't descend.
+		//  if the container is any state other than Processed, then descend.
 		if state, err := store.Retrieve(container.Uri()); err == nil && state == persistence.Processed {
 			return false
 		}
 
-		//  if the container is not done, then descend.
-		//  if the container is not present, then descend.
-
-		// if the container is not a pass resource, descend.
-		if ok, _ := container.IsPassResource(); !ok {
-			log.Printf("visit: recursing non-PASS resource %s", container.Uri())
-			return true
+		// if the container is a PASS resource, don't descend (there are no contained resources)
+		// TODO double check re files
+		if ok, _ := container.IsPassResource(); ok {
+			log.Printf("visit: refusing to recurse PASS resource %s", container.Uri())
+			return false
 		}
 
-		// otherwise don't descend (i.e. it is a PASS resource, so there are no contained resources)
-		return false
+		// otherwise descend (i.e. it is not a PASS resource, and the container state is not Processed)
+		return true
 	}
 
 	accept := func(container model.LdpContainer) bool {
 		// check persistence store:
-		//   if the container is processed, then don't accept
+		//   if the container state is Processed, then don't accept
 		if state, err := store.Retrieve(container.Uri()); err == nil && state == persistence.Processed {
 			return false
 		}
 
+		// if the container is a a PASS resource, accept it for processing.
 		if ok, passType := container.IsPassResource(); ok {
 			log.Printf("visit: accepting PASS resource %s %s", container.Uri(), passType)
 			return true
 		}
+
+		// Otherwise don't accept the container for processing.
 		return false
 	}
 
