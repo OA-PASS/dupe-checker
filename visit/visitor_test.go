@@ -65,14 +65,25 @@ func TestVisitor_Walk(t *testing.T) {
 	underTest := New(retriever.New(client, "fedoraAdmin", "moo", "TestVisitor_Walk"), maxSimultaneousReqs)
 
 	//filter := func(container model.LdpContainer) bool {
+	//	// check persistence store:
+	//	//  if the container is processed, then don't descend.
+	//	//  if the container is not done, then descend.
+	//	//  if the container is not present, then descend.
+	//
+	//	// if the container is not a pass resource, descend.
 	//	if ok, _ := container.IsPassResource(); !ok {
 	//		log.Printf("visit: recursing non-PASS resource %s", container.Uri())
 	//		return true
 	//	}
+	//
+	//	// otherwise don't descend (i.e. it is a PASS resource, so there are no contained resources)
 	//	return false
 	//}
 	//
 	//accept := func(container model.LdpContainer) bool {
+	//	// check persistence store:
+	//	//   if the container is processed, then don't accept
+	//
 	//	if ok, passType := container.IsPassResource(); ok {
 	//		log.Printf("visit: accepting PASS resource %s %s", container.Uri(), passType)
 	//		return true
@@ -88,15 +99,30 @@ func TestVisitor_Walk(t *testing.T) {
 	}()
 
 	accepted := 0
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		for container := range underTest.Containers {
+			// if a container is a PASS resource, check for duplicates, store result, and mark the resource as processed.
 			ok, passType := container.IsPassResource()
 			assert.True(t, ok)
 			assert.True(t, len(passType) > 0)
 			assert.True(t, len(container.Uri()) > 0)
 			log.Printf("read %s %s off channel", container.Uri(), passType)
 			accepted++
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		for event := range underTest.Events {
+			switch event.EventType {
+			case EventDescendStartContainer:
+				// Persist the starting of a container
+			case EventDescendEndContainer:
+				// Persist the completion of a container
+			case EventProcessedForDupes:
+				// Persist the processing completion of a container
+			}
 		}
 		wg.Done()
 	}()

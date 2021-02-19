@@ -20,6 +20,8 @@ type ConcurrentVisitor struct {
 	Containers chan model.LdpContainer
 	// Any errors encountered when traversing the repository are written to this channel
 	Errors chan error
+	// Events recording the start and end of traversing resources are written to this channel
+	Events chan Event
 }
 
 // descends into every container
@@ -43,6 +45,7 @@ func New(retriever retriever.Retriever, maxConcurrent int) ConcurrentVisitor {
 		semaphore:  make(chan int, maxConcurrent),
 		Containers: make(chan model.LdpContainer),
 		Errors:     make(chan error),
+		Events:     make(chan Event),
 	}
 }
 
@@ -85,14 +88,25 @@ func (v ConcurrentVisitor) Walk(startUri string, filter, accept func(container m
 
 	close(v.Containers)
 	close(v.Errors)
+	close(v.Events)
 }
 
 func (v ConcurrentVisitor) walkInternal(c model.LdpContainer, filter, accept func(container model.LdpContainer) bool) {
 	var e error
+
+	// The WaitGroup insures that walkInternal(...) blocks until all the children of the supplied container have been
+	// visited.  This allows for the calling method to close the channels without risking a panic (sending on a closed
+	// channel)
+	//
+	// It also insures that when an EventDescendEndContainer is observed, the observer is guaranteed that all of the
+	// container's children have been visited.
 	wg := sync.WaitGroup{}
 	wg.Add(len(c.Contains()))
+
+	v.Events <- Event{c.Uri(), EventDescendStartContainer, fmt.Sprintf("STARTCONTAINER: %s", c.Uri())}
 	for _, uri := range c.Contains() {
 		v.semaphore <- 1
+		v.Events <- Event{uri, EventDescendStart, fmt.Sprintf("START: %s", uri)}
 		go func(uri string) {
 			log.Printf("visit: retrieving %s", uri)
 			if c, e = v.retriever.Get(uri); e != nil {
@@ -102,6 +116,7 @@ func (v ConcurrentVisitor) walkInternal(c model.LdpContainer, filter, accept fun
 					Message: e.Error(),
 					Wrapped: e,
 				})
+				v.Events <- Event{uri, EventDescendEnd, fmt.Sprintf("END: %s", uri)}
 			} else {
 				<-v.semaphore
 				if accept(c) {
@@ -110,9 +125,11 @@ func (v ConcurrentVisitor) walkInternal(c model.LdpContainer, filter, accept fun
 				if filter(c) {
 					v.walkInternal(c, filter, accept)
 				}
+				v.Events <- Event{uri, EventDescendEnd, fmt.Sprintf("END: %s", uri)}
 			}
 			wg.Done()
 		}(uri)
 	}
 	wg.Wait()
+	v.Events <- Event{c.Uri(), EventDescendEndContainer, fmt.Sprintf("ENDCONTAINER: %s", c.Uri())}
 }
