@@ -1,13 +1,17 @@
 package model
 
 import (
+	"fmt"
 	"github.com/knakk/rdf"
+	"log"
 	"strings"
 )
 
 const (
 	// The URI prefix shared by all PASS resources
 	PassResourceUriPrefix = "http://oapass.org/ns/pass#"
+	// The URI prefix shared by all Fedora resources
+	FedoraResourceUriPrefix = "http://fedora.info/definitions/v4/repository#"
 	// The URI of the rdf:type predicate
 	RdfTypeUri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 	// The URI of the ldp:container predicate
@@ -29,6 +33,21 @@ func (ldpc LdpContainer) Uri() string {
 	if len(ldpc.triples) > 0 {
 		return ldpc.triples[0].Subj.String()
 	}
+	return ""
+}
+
+// The parent URI of this container
+func (ldpc LdpContainer) Parent() string {
+	results := ldpc.filterPred(func(predicate string) bool {
+		return predicate == fmt.Sprintf("%s%s", FedoraResourceUriPrefix, "hasParent")
+	})
+
+	if len(results) == 1 {
+		return results[0]
+	} else if len(results) > 1 {
+		log.Printf("model: unexpected number of parents %d for resource %s", len(results), ldpc.Uri())
+	}
+
 	return ""
 }
 
