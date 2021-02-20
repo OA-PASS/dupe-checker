@@ -164,12 +164,20 @@ func TestVisitor_Walk(t *testing.T) {
 				}
 			case EventDescendEndContainer:
 				// when a container ends, we can check to make sure all of its children are processed and then mark
-				// the container as processed.
+				// the container as processed.  Note we don't have to do this for PASS resources
 				if err := store.StoreUri(event.Target, persistence.Completed); err != nil {
 					log.Printf("%v", err)
 				} else {
 					log.Printf("%s", event.Message)
 				}
+
+				// retrieve the full container
+				// iterate its children
+				// break at first child not processed
+				//   technically, only URIs that are accepted should be present as children.  if for whatever reason a
+				//   child resource is not accepted, it will never be processed and therefore its parent container cannot
+				//   be either
+				// if all children are processed, update container state to processed
 			case EventProcessedForDupes:
 				if err := store.StoreUri(event.Target, persistence.Processed); err != nil {
 					log.Printf("%v", err)

@@ -172,7 +172,7 @@ func (store sqlLiteEventStore) StoreContainer(c model.LdpContainer, s State) err
 
 	if isUpdate {
 		if _, err = tx.Exec(updateContainerByUri, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s, c.Uri()); err != nil {
-			return NewErrQuery(selectContainerByUri, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), string(s), c.Uri())
+			return NewErrQuery(updateContainerByUri, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), string(s), c.Uri())
 		}
 	} else {
 		if _, err = tx.Exec(insertContainer, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s); err != nil {
