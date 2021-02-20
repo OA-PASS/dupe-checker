@@ -57,7 +57,7 @@ func New(retriever retriever.Retriever, maxConcurrent int) ConcurrentVisitor {
 // Walk should be invoked within a goroutine while the Errors and Containers channel are read in separate goroutines.
 //
 // Both filter and accept may be nil, in which case all resources are filtered for recursion, and all PASS resources are
-// accepted.
+// accepted by the Containers channel.
 func (v ConcurrentVisitor) Walk(startUri string, filter, accept func(container model.LdpContainer) bool) {
 	var c model.LdpContainer
 	var e error

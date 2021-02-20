@@ -14,6 +14,15 @@ import (
 	//"github.com/mattn/go-sqlite3"
 )
 
+const (
+	selectContainerByUri = "SELECT container FROM main.containers WHERE container=?"
+	selectStateByUri     = "SELECT state FROM main.containers WHERE container=?"
+	updateStateByUri     = "UPDATE main.containers SET state = ? WHERE container = ?"
+	updateContainerByUri = "UPDATE main.containers SET container = ?, parent = ?, contains = ?, types = ?, state = ? WHERE container = ?"
+	insertState          = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
+	insertContainer      = "INSERT INTO main.containers (container, parent, contains, types, state) VALUES (?, ?, ?, ?, ?)"
+)
+
 type SqliteParams struct {
 	User        string
 	Pass        string
@@ -92,16 +101,23 @@ func (store sqlLiteEventStore) StoreUri(containerUri string, s State) error {
 	var r *sql.Rows
 	var err error
 
-	if r, err = store.db.Query("SELECT container FROM main.containers WHERE container=?", containerUri); err != nil {
-		return StoreErr{
-			fmt.Sprintf("Error querying containters table for the presence of LDPC with uri %s", containerUri),
-			err,
+	defer func() {
+		if _, err := store.db.Exec("ROLLBACK TRANSACTION"); err != nil && !strings.Contains(err.Error(), "no transaction is active") {
+			log.Printf("%v", NewErrTx(rollback, containerUri, err, "persistence", "StoreUri"))
 		}
+	}()
+
+	if _, err = store.db.Exec("BEGIN IMMEDIATE TRANSACTION"); err != nil {
+		return NewErrTx(begin, containerUri, err, "persistence", "StoreUri")
+	}
+
+	if r, err = store.db.Query(selectContainerByUri, containerUri); err != nil {
+		return NewErrQuery(selectContainerByUri, err, "persistence", "StoreUri", containerUri)
 	}
 
 	defer func() {
 		if err := r.Close(); err != nil {
-			log.Printf("failed to close *sql.Rows: %v", err)
+			log.Printf("%v", NewErrClose(err, "persistence", "StoreUri"))
 		}
 	}()
 
@@ -109,16 +125,17 @@ func (store sqlLiteEventStore) StoreUri(containerUri string, s State) error {
 	r.Close()
 
 	if isUpdate {
-		_, err = store.db.Exec("UPDATE main.containers SET state = ? WHERE container = ?", s, containerUri)
+		if _, err = store.db.Exec(updateStateByUri, s, containerUri); err != nil {
+			return NewErrQuery(updateStateByUri, err, "persistence", "StoreUri", string(s), containerUri)
+		}
 	} else {
-		_, err = store.db.Exec("INSERT INTO main.containers (container, state) VALUES (?, ?)", containerUri, s)
+		if _, err = store.db.Exec(insertState, containerUri, s); err != nil {
+			return NewErrQuery(insertState, err, "persistence", "StoreUri", containerUri, string(s))
+		}
 	}
 
-	if err != nil {
-		return StoreErr{
-			Message: fmt.Sprintf("Error storing state for LDPC uri %s: %s", containerUri, err.Error()),
-			Wrapped: err,
-		}
+	if _, err := store.db.Exec("COMMIT TRANSACTION"); err != nil {
+		return NewErrTx(commit, containerUri, err, "persistence", "StoreUri")
 	}
 
 	return nil
@@ -128,16 +145,23 @@ func (store sqlLiteEventStore) StoreContainer(c model.LdpContainer, s State) err
 	var r *sql.Rows
 	var err error
 
-	if r, err = store.db.Query("SELECT container FROM main.containers WHERE container=?", c.Uri()); err != nil {
-		return StoreErr{
-			fmt.Sprintf("Error querying containters table for the presence of LDPC with uri %s", c.Uri()),
-			err,
+	defer func() {
+		if _, err := store.db.Exec("ROLLBACK TRANSACTION"); err != nil && !strings.Contains(err.Error(), "no transaction is active") {
+			log.Printf("%v", NewErrTx(rollback, c.Uri(), err, "persistence", "StoreContainer"))
 		}
+	}()
+
+	if _, err = store.db.Exec("BEGIN IMMEDIATE TRANSACTION"); err != nil {
+		return NewErrTx(begin, c.Uri(), err, "persistence", "StoreContainer")
+	}
+
+	if r, err = store.db.Query(selectContainerByUri, c.Uri()); err != nil {
+		return NewErrQuery(selectContainerByUri, err, "persistence", "StoreContainer", c.Uri())
 	}
 
 	defer func() {
 		if err := r.Close(); err != nil {
-			log.Printf("failed to close *sql.Rows: %v", err)
+			log.Printf("%v", NewErrClose(err, "persistence", "StoreContainer"))
 		}
 	}()
 
@@ -145,18 +169,17 @@ func (store sqlLiteEventStore) StoreContainer(c model.LdpContainer, s State) err
 	r.Close() // container exists
 
 	if isUpdate {
-		_, err = store.db.Exec("UPDATE main.containers SET container = ?, parent = ?, contains = ?, types = ?, state = ?",
-			c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s)
+		if _, err = store.db.Exec(updateContainerByUri, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s, c.Uri()); err != nil {
+			return NewErrQuery(selectContainerByUri, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), string(s), c.Uri())
+		}
 	} else {
-		_, err = store.db.Exec("INSERT INTO main.containers (container, parent, contains, types, state) VALUES (?, ?, ?, ?, ?)",
-			c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s)
+		if _, err = store.db.Exec(insertContainer, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s); err != nil {
+			return NewErrQuery(insertContainer, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), string(s))
+		}
 	}
 
-	if err != nil {
-		return StoreErr{
-			Message: fmt.Sprintf("Error storing LDPC with uri %s: %s", c.Uri(), err.Error()),
-			Wrapped: err,
-		}
+	if _, err := store.db.Exec("COMMIT TRANSACTION"); err != nil {
+		return NewErrTx(commit, c.Uri(), err, "persistence", "StoreContainer")
 	}
 
 	return nil
@@ -167,21 +190,21 @@ func (store sqlLiteEventStore) Retrieve(uri string) (State, error) {
 	var err error
 	state := Unknown
 
-	if r, err = store.db.Query("SELECT state FROM main.containers WHERE container=?", uri); err != nil {
-		return state, fmt.Errorf("error retrieving state for container %s: %w", uri, err)
+	if r, err = store.db.Query(selectStateByUri, uri); err != nil {
+		return state, NewErrQuery(selectStateByUri, err, "persistence", "Retrieve", uri)
 	}
 
 	defer r.Close()
 
 	if r.Next() {
 		if err = r.Scan(&state); err != nil {
-			return state, fmt.Errorf("error Scanning state for container %s: %w", uri, err)
+			return state, NewErrRowScan(selectStateByUri, err, "persistence", "Retrieve", uri)
 		}
 
 		return state, nil
 	}
 
-	return state, fmt.Errorf("no container found: %s", uri)
+	return state, NewErrNoResults(selectStateByUri, "persistence", "Retrieve", uri)
 }
 
 func (store sqlLiteEventStore) retrieveContainer(uri string) (model.LdpContainer, error) {
