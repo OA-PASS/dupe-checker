@@ -3,8 +3,12 @@ package retriever
 
 import (
 	"dupe-checker/model"
+	"fmt"
 	"github.com/knakk/rdf"
+	"io"
+	"log"
 	"net/http"
+	"os"
 )
 
 const (
@@ -44,16 +48,36 @@ func (r retriever) Get(uri string) (model.LdpContainer, error) {
 	}
 
 	if res, err = r.httpClient.Do(req); err != nil {
-		return model.LdpContainer{}, err
+		return model.LdpContainer{}, fmt.Errorf("retriever: error executing GET %s: %w", uri, err)
 	}
 
 	defer func() { res.Body.Close() }()
 
-	dec := rdf.NewTripleDecoder(res.Body, rdf.NTriples)
-	if triples, err = dec.DecodeAll(); err != nil {
-		return model.LdpContainer{}, err
+	var tmp *os.File
+	if tmp, err = os.CreateTemp("", "container-*.n3"); err != nil {
+		log.Fatalf("Error creating or truncating file: %v", err)
+	} else {
+		if _, err := io.Copy(tmp, res.Body); err != nil {
+			log.Fatalf("Unable to write %s: %v", tmp.Name(), err)
+		}
+		if err := tmp.Close(); err != nil {
+			log.Printf("Error closing %s: %v", tmp.Name(), err)
+		}
 	}
 
+	if tmp, err = os.Open(tmp.Name()); err != nil {
+		log.Fatalf("Unable to open file %s for reading %v", tmp.Name(), err)
+	}
+	dec := rdf.NewTripleDecoder(tmp, rdf.NTriples)
+	if triples, err = dec.DecodeAll(); err != nil {
+		//return model.LdpContainer{}, fmt.Errorf("retriever: error decoding triples of <%s>: %w", uri, err)
+		log.Fatalf("retriever: error decoding triples of <%s>: %w", uri, err)
+	} else {
+		tmp.Close()
+		os.Remove(tmp.Name())
+	}
+
+	//log.Printf("Decoded %d triples", len(triples))
 	return model.NewContainer(triples), nil
 }
 

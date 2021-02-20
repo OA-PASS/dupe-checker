@@ -62,7 +62,7 @@ import (
 
 func TestVisitor_Walk(t *testing.T) {
 	client := &http.Client{
-		Timeout: 120 * time.Second,
+		Timeout: 1200 * time.Second,
 	}
 
 	_ = &sqlite3.SQLiteDriver{}
@@ -71,7 +71,7 @@ func TestVisitor_Walk(t *testing.T) {
 		MaxOpenConn: 2,
 	}, nil)
 
-	maxSimultaneousReqs := 50
+	maxSimultaneousReqs := 20
 
 	underTest := New(retriever.New(client, "fedoraAdmin", "moo", "TestVisitor_Walk"), maxSimultaneousReqs)
 
@@ -88,7 +88,7 @@ func TestVisitor_Walk(t *testing.T) {
 		// if the container is a PASS resource, don't descend (there are no contained resources)
 		// TODO double check re files
 		if ok, _ := container.IsPassResource(); ok {
-			log.Printf("visit: refusing to recurse PASS resource %s", container.Uri())
+			//log.Printf("visit: refusing to recurse PASS resource %s", container.Uri())
 			return false
 		}
 
@@ -107,12 +107,12 @@ func TestVisitor_Walk(t *testing.T) {
 		if state, err := store.Retrieve(container.Uri()); err == nil && state == persistence.Processed {
 			return false
 		} else if err != nil && !errors.Is(err, persistence.ErrNoResults) {
-			log.Printf("accept: %v", err)
+			//log.Printf("accept: %v", err)
 		}
 
 		// if the container is a a PASS resource, accept it for processing.
-		if ok, passType := container.IsPassResource(); ok {
-			log.Printf("visit: accepting PASS resource for processing %s %s", container.Uri(), passType)
+		if ok, _ := container.IsPassResource(); ok {
+			//log.Printf("visit: accepting PASS resource for processing %s %s", container.Uri(), passType)
 			return true
 		}
 
@@ -123,6 +123,7 @@ func TestVisitor_Walk(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
+		log.Printf("Beginning walk")
 		underTest.Walk("http://fcrepo:8080/fcrepo/rest/", filter, accept)
 		wg.Done()
 	}()
@@ -136,12 +137,16 @@ func TestVisitor_Walk(t *testing.T) {
 			assert.True(t, ok)
 			assert.True(t, len(passType) > 0)
 			assert.True(t, len(container.Uri()) > 0)
-			log.Printf("read %s %s off channel", container.Uri(), passType)
+			//log.Printf("read %s %s off channel", container.Uri(), passType)
 			accepted++
+			if accepted%1000 == 0 {
+				log.Printf("Processed %d resources", accepted)
+			}
 			if err := store.StoreContainer(container, persistence.Processed); err != nil {
 				log.Printf("%s", err.Error())
 			}
 		}
+		log.Printf("Processed %d total resources", accepted)
 		wg.Done()
 	}()
 
@@ -160,7 +165,7 @@ func TestVisitor_Walk(t *testing.T) {
 				if err := store.StoreUri(event.Target, persistence.Started); err != nil {
 					log.Printf("%v", err)
 				} else {
-					log.Printf("%s", event.Message)
+					//log.Printf("%s", event.Message)
 				}
 			case EventDescendEndContainer:
 				// when a container ends, we can check to make sure all of its children are processed and then mark
@@ -168,7 +173,7 @@ func TestVisitor_Walk(t *testing.T) {
 				if err := store.StoreUri(event.Target, persistence.Completed); err != nil {
 					log.Printf("%v", err)
 				} else {
-					log.Printf("%s", event.Message)
+					//log.Printf("%s", event.Message)
 				}
 
 				// retrieve the full container
@@ -182,7 +187,7 @@ func TestVisitor_Walk(t *testing.T) {
 				if err := store.StoreUri(event.Target, persistence.Processed); err != nil {
 					log.Printf("%v", err)
 				} else {
-					log.Printf("%s", event.Message)
+					//log.Printf("%s", event.Message)
 				}
 			}
 		}

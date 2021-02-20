@@ -108,7 +108,7 @@ func (v ConcurrentVisitor) walkInternal(c model.LdpContainer, filter, accept fun
 		v.semaphore <- 1
 		v.Events <- Event{uri, EventDescendStart, fmt.Sprintf("START: %s", uri)}
 		go func(uri string) {
-			log.Printf("visit: retrieving %s", uri)
+			//log.Printf("visit: retrieving %s", uri)
 			if c, e = v.retriever.Get(uri); e != nil {
 				<-v.semaphore
 				v.Errors <- fmt.Errorf("%v", VisitErr{
