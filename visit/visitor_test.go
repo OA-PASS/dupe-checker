@@ -6,6 +6,7 @@ import (
 	"dupe-checker/model"
 	"dupe-checker/persistence"
 	"dupe-checker/retriever"
+	"errors"
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"log"
@@ -80,7 +81,7 @@ func TestVisitor_Walk(t *testing.T) {
 		//  if the container is any state other than Processed, then descend.
 		if state, err := store.Retrieve(container.Uri()); err == nil && state == persistence.Processed {
 			return false
-		} else if err != nil {
+		} else if err != nil && !errors.Is(err, persistence.ErrNoResults) {
 			log.Printf("filter: %v", err)
 		}
 
@@ -105,7 +106,7 @@ func TestVisitor_Walk(t *testing.T) {
 		//   if the container state is Processed, then don't accept
 		if state, err := store.Retrieve(container.Uri()); err == nil && state == persistence.Processed {
 			return false
-		} else if err != nil {
+		} else if err != nil && !errors.Is(err, persistence.ErrNoResults) {
 			log.Printf("accept: %v", err)
 		}
 

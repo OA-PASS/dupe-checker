@@ -98,20 +98,21 @@ func NewSqlLiteStore(dsn string, params SqliteParams, ctx context.Context) (Stor
 }
 
 func (store sqlLiteEventStore) StoreUri(containerUri string, s State) error {
+	var tx *sql.Tx
 	var r *sql.Rows
 	var err error
 
 	defer func() {
-		if _, err := store.db.Exec("ROLLBACK TRANSACTION"); err != nil && !strings.Contains(err.Error(), "no transaction is active") {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
 			log.Printf("%v", NewErrTx(rollback, containerUri, err, "persistence", "StoreUri"))
 		}
 	}()
 
-	if _, err = store.db.Exec("BEGIN IMMEDIATE TRANSACTION"); err != nil {
-		return NewErrTx(begin, containerUri, err, "persistence", "StoreUri")
+	if tx, err = store.db.Begin(); err != nil {
+		return NewErrTx(begin, containerUri, err, "peristence", "StoreUri")
 	}
 
-	if r, err = store.db.Query(selectContainerByUri, containerUri); err != nil {
+	if r, err = tx.Query(selectContainerByUri, containerUri); err != nil {
 		return NewErrQuery(selectContainerByUri, err, "persistence", "StoreUri", containerUri)
 	}
 
@@ -125,16 +126,16 @@ func (store sqlLiteEventStore) StoreUri(containerUri string, s State) error {
 	r.Close()
 
 	if isUpdate {
-		if _, err = store.db.Exec(updateStateByUri, s, containerUri); err != nil {
+		if _, err = tx.Exec(updateStateByUri, s, containerUri); err != nil {
 			return NewErrQuery(updateStateByUri, err, "persistence", "StoreUri", string(s), containerUri)
 		}
 	} else {
-		if _, err = store.db.Exec(insertState, containerUri, s); err != nil {
+		if _, err = tx.Exec(insertState, containerUri, s); err != nil {
 			return NewErrQuery(insertState, err, "persistence", "StoreUri", containerUri, string(s))
 		}
 	}
 
-	if _, err := store.db.Exec("COMMIT TRANSACTION"); err != nil {
+	if err := tx.Commit(); err != nil {
 		return NewErrTx(commit, containerUri, err, "persistence", "StoreUri")
 	}
 
@@ -142,20 +143,21 @@ func (store sqlLiteEventStore) StoreUri(containerUri string, s State) error {
 }
 
 func (store sqlLiteEventStore) StoreContainer(c model.LdpContainer, s State) error {
+	var tx *sql.Tx
 	var r *sql.Rows
 	var err error
 
 	defer func() {
-		if _, err := store.db.Exec("ROLLBACK TRANSACTION"); err != nil && !strings.Contains(err.Error(), "no transaction is active") {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
 			log.Printf("%v", NewErrTx(rollback, c.Uri(), err, "persistence", "StoreContainer"))
 		}
 	}()
 
-	if _, err = store.db.Exec("BEGIN IMMEDIATE TRANSACTION"); err != nil {
+	if tx, err = store.db.Begin(); err != nil {
 		return NewErrTx(begin, c.Uri(), err, "persistence", "StoreContainer")
 	}
 
-	if r, err = store.db.Query(selectContainerByUri, c.Uri()); err != nil {
+	if r, err = tx.Query(selectContainerByUri, c.Uri()); err != nil {
 		return NewErrQuery(selectContainerByUri, err, "persistence", "StoreContainer", c.Uri())
 	}
 
@@ -169,16 +171,16 @@ func (store sqlLiteEventStore) StoreContainer(c model.LdpContainer, s State) err
 	r.Close() // container exists
 
 	if isUpdate {
-		if _, err = store.db.Exec(updateContainerByUri, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s, c.Uri()); err != nil {
+		if _, err = tx.Exec(updateContainerByUri, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s, c.Uri()); err != nil {
 			return NewErrQuery(selectContainerByUri, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), string(s), c.Uri())
 		}
 	} else {
-		if _, err = store.db.Exec(insertContainer, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s); err != nil {
+		if _, err = tx.Exec(insertContainer, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s); err != nil {
 			return NewErrQuery(insertContainer, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), string(s))
 		}
 	}
 
-	if _, err := store.db.Exec("COMMIT TRANSACTION"); err != nil {
+	if err := tx.Commit(); err != nil {
 		return NewErrTx(commit, c.Uri(), err, "persistence", "StoreContainer")
 	}
 
