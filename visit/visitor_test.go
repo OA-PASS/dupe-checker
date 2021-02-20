@@ -66,7 +66,7 @@ func TestVisitor_Walk(t *testing.T) {
 	}
 
 	_ = &sqlite3.SQLiteDriver{}
-	store, _ := persistence.NewSqlLiteStore("file:/tmp/test.db?mode=rwc", persistence.SqliteParams{
+	store, _ := persistence.NewSqlLiteStore("file:/tmp/test.db?mode=rwc&cache=shared", persistence.SqliteParams{
 		MaxIdleConn: 2,
 		MaxOpenConn: 2,
 	}, nil)
