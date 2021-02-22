@@ -72,7 +72,7 @@ func TestVisitor_Walk(t *testing.T) {
 	}, nil)
 	store = persistence.NewRetrySqliteStore(store, 500*time.Millisecond, 2, 10, sqlite3.ErrBusy, sqlite3.ErrLocked, sqlite3.ErrConstraint)
 
-	maxSimultaneousReqs := 20
+	maxSimultaneousReqs := 5
 
 	underTest := New(retriever.New(client, "fedoraAdmin", "moo", "TestVisitor_Walk"), maxSimultaneousReqs)
 
