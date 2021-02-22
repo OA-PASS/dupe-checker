@@ -28,8 +28,10 @@ const (
 type txOp int
 
 type StoreErr struct {
-	Message string
-	Wrapped error
+	Uri        string
+	Message    string
+	Wrapped    error
+	Underlying error
 }
 
 func (se StoreErr) Error() string {
@@ -44,8 +46,9 @@ var ErrClose = errors.New("error closing result or connection")
 
 func NewErrClose(underlying error, pkg string, method string) StoreErr {
 	return StoreErr{
-		Message: fmt.Sprintf("%s %s: error closing result or connection, %v", pkg, method, underlying),
-		Wrapped: ErrClose,
+		Message:    fmt.Sprintf("%s %s: error closing result or connection, %v", pkg, method, underlying),
+		Wrapped:    ErrClose,
+		Underlying: underlying,
 	}
 }
 
@@ -53,8 +56,9 @@ var ErrQuery = errors.New("error performing query")
 
 func NewErrQuery(query string, underlying error, pkg string, method string, placeholders ...string) StoreErr {
 	return StoreErr{
-		Message: fmt.Sprintf("%s %s: error performing query '%s' (%s), %v", pkg, method, query, strings.Join(placeholders, ","), underlying),
-		Wrapped: ErrQuery,
+		Message:    fmt.Sprintf("%s %s: error performing query '%s' (%s), %v", pkg, method, query, strings.Join(placeholders, ","), underlying),
+		Wrapped:    ErrQuery,
+		Underlying: underlying,
 	}
 }
 
@@ -62,8 +66,9 @@ var ErrRowScan = errors.New("rowscan error")
 
 func NewErrRowScan(query string, underlying error, pkg string, method string, placeholders ...string) StoreErr {
 	return StoreErr{
-		Message: fmt.Sprintf("%s %s: error scanning rows for query '%s' (%s), %v", pkg, method, query, strings.Join(placeholders, ","), underlying),
-		Wrapped: ErrRowScan,
+		Message:    fmt.Sprintf("%s %s: error scanning rows for query '%s' (%s), %v", pkg, method, query, strings.Join(placeholders, ","), underlying),
+		Wrapped:    ErrRowScan,
+		Underlying: underlying,
 	}
 }
 
@@ -92,8 +97,20 @@ func NewErrTx(op txOp, uri string, underlying error, pkg string, method string) 
 	}
 
 	return StoreErr{
-		Message: fmt.Sprintf("%s %s %s <%s>, %v", pkg, method, msg, uri, underlying),
-		Wrapped: ErrTx,
+		Uri:        uri,
+		Message:    fmt.Sprintf("%s %s %s <%s>, %v", pkg, method, msg, uri, underlying),
+		Wrapped:    ErrTx,
+		Underlying: underlying,
+	}
+}
+
+var ErrMaxRetry = errors.New("maximum retries for query reached")
+
+func NewErrMaxRetry(underlying error, tries int) StoreErr {
+	return StoreErr{
+		Message:    fmt.Sprintf("maximum number of retries attempted (%d attempts): %v", tries, underlying),
+		Wrapped:    ErrMaxRetry,
+		Underlying: underlying,
 	}
 }
 

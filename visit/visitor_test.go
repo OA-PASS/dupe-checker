@@ -66,10 +66,11 @@ func TestVisitor_Walk(t *testing.T) {
 	}
 
 	_ = &sqlite3.SQLiteDriver{}
-	store, _ := persistence.NewSqlLiteStore("file:/tmp/test.db?mode=rwc&cache=shared", persistence.SqliteParams{
+	store, _ := persistence.NewSqlLiteStore("file:/tmp/test2.db?mode=rwc&cache=shared", persistence.SqliteParams{
 		MaxIdleConn: 2,
 		MaxOpenConn: 2,
 	}, nil)
+	store = persistence.NewRetrySqliteStore(store, 500*time.Millisecond, 2, 10, sqlite3.ErrBusy, sqlite3.ErrLocked, sqlite3.ErrConstraint)
 
 	maxSimultaneousReqs := 20
 

@@ -127,11 +127,11 @@ func (store sqlLiteEventStore) StoreUri(containerUri string, s State) error {
 
 	if isUpdate {
 		if _, err = tx.Exec(updateStateByUri, s, containerUri); err != nil {
-			return NewErrQuery(updateStateByUri, err, "persistence", "StoreUri", string(s), containerUri)
+			return NewErrQuery(updateStateByUri, err, "persistence", "StoreUri", fmt.Sprintf("%d", s), containerUri)
 		}
 	} else {
 		if _, err = tx.Exec(insertState, containerUri, s); err != nil {
-			return NewErrQuery(insertState, err, "persistence", "StoreUri", containerUri, string(s))
+			return NewErrQuery(insertState, err, "persistence", "StoreUri", containerUri, fmt.Sprintf("%d", s))
 		}
 	}
 
@@ -172,11 +172,11 @@ func (store sqlLiteEventStore) StoreContainer(c model.LdpContainer, s State) err
 
 	if isUpdate {
 		if _, err = tx.Exec(updateContainerByUri, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s, c.Uri()); err != nil {
-			return NewErrQuery(updateContainerByUri, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), string(s), c.Uri())
+			return NewErrQuery(updateContainerByUri, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), fmt.Sprintf("%d", s), c.Uri())
 		}
 	} else {
 		if _, err = tx.Exec(insertContainer, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s); err != nil {
-			return NewErrQuery(insertContainer, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), string(s))
+			return NewErrQuery(insertContainer, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), fmt.Sprintf("%d", s))
 		}
 	}
 
