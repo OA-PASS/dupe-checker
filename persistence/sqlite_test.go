@@ -3,6 +3,7 @@ package persistence
 import (
 	"database/sql"
 	"dupe-checker/model"
+	_ "embed"
 	"github.com/knakk/rdf"
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,9 @@ import (
 	"os"
 	"testing"
 )
+
+//go:embed pass-user.n3
+var userResource string
 
 func Test_SqlLiteSimple(t *testing.T) {
 	_ = &sqlite3.SQLiteDriver{}
@@ -84,27 +88,33 @@ func Test_DriverSimple(t *testing.T) {
 	var store Store
 	var err error
 
-	if store, err = NewSqlLiteStore("file:/tmp/test.db?cache=shared&mode=rwc", SqliteParams{"", "", 2, 10}, nil); err != nil {
-		log.Fatal(err.Error())
+	if store, err = NewSqlLiteStore("file:/tmp/test3.db?cache=shared&mode=rwc", SqliteParams{"", "", 2, 10}, nil); err != nil {
+		assert.Fail(t, err.Error())
 	}
 
+	// The count of expected users (i.e. number of ldp:contains triples) in our test container
+	expectedUsers := 7490
+
+	// Create a container from an n-triples representation on the filesystem (instead of contacting the repo)
 	allTrips := decodeTriples(t, "/tmp/user-container.n3")
 	ldpc := model.NewContainer(allTrips)
-	log.Printf("Contains %d users", len(ldpc.Contains()))
+	assert.Equal(t, expectedUsers, len(ldpc.Contains()))
 	isPass, _ := ldpc.IsPassResource()
 	assert.False(t, isPass)
 
-	if err = store.StoreContainer(ldpc, Processed); err != nil {
-		log.Fatalf("store error: %v", err)
-	}
+	// Store the container in the DB.
+	assert.Nil(t, store.StoreContainer(ldpc, Processed))
 
-	if copy, err := store.(sqlLiteEventStore).retrieveContainer(ldpc.Uri()); err != nil {
-		log.Fatalf("Error retrieving LDPC %s: %s", ldpc.Uri(), err.Error())
+	// Retrieve the container from the database.  Note ldp:contains relationships are *not* present.
+	if dbCopy, err := store.(sqlLiteEventStore).retrieveContainer(ldpc.Uri()); err != nil {
+		assert.Fail(t, err.Error())
 	} else {
-		assert.Equal(t, len(ldpc.Contains()), len(copy.Contains()))
-		log.Printf("Copy has %d users", len(copy.Contains()))
+		assert.NotEqual(t, len(ldpc.Contains()), len(dbCopy.Contains()))
+		log.Printf("Repo has %d users, db copy has %d users", len(ldpc.Contains()), len(dbCopy.Contains()))
 	}
 
+	// Attempts to add an ldp:contains relationship and store it will fail, since ldp:contains are not persisted as such
+	// in the DB.
 	s, _ := rdf.NewIRI(ldpc.Uri())
 	p, _ := rdf.NewIRI(model.LdpContainsUri)
 	o, _ := rdf.NewIRI("http://google.com")
@@ -114,22 +124,44 @@ func Test_DriverSimple(t *testing.T) {
 		Obj:  o,
 	})
 
-	if err = store.StoreContainer(model.NewContainer(allTrips), Processed); err != nil {
-		log.Fatalf("store error: %v", err)
-	}
+	// Store the container with the additional triple (that won't be persisted) and update its state (which will be persisted)
+	assert.Nil(t, store.StoreContainer(model.NewContainer(allTrips), Processed))
 
-	if copy, err := store.(sqlLiteEventStore).retrieveContainer(ldpc.Uri()); err != nil {
-		log.Fatalf("Error retrieving LDPC %s: %s", ldpc.Uri(), err.Error())
+	// Containment triples not stored in the copy
+	if dbCopy, err := store.(sqlLiteEventStore).retrieveContainer(ldpc.Uri()); err != nil {
+		assert.Fail(t, err.Error())
 	} else {
-		assert.Equal(t, len(ldpc.Contains())+1, len(copy.Contains()))
-		log.Printf("Copy has %d users", len(copy.Contains()))
+		assert.Equal(t, 0, len(dbCopy.Contains()))
 	}
 
+	// But state is updated
 	if s, err := store.Retrieve(ldpc.Uri()); err != nil {
-		log.Fatalf("store error: %v", err)
+		assert.Fail(t, err.Error())
 	} else {
 		assert.Equal(t, Processed, s)
 	}
+}
+
+func Test_RoundTripProperties(t *testing.T) {
+	//memoryDsn := "file::memory:"
+	fileDsn := "file:/tmp/test3.db?cache=shared&mode=rwc"
+
+	// Deserialize the RDF representation from an embedded resource (rather than the repository) as a model.LdpContainer
+	expectedPassPropertyCount := 7
+	user, err := model.ReadContainer(userResource)
+	assert.Nil(t, err)
+	assert.Equal(t, expectedPassPropertyCount, len(user.PassProperties()))
+	expectedProperties := user.PassProperties()
+
+	// Store the LdpContainer
+	store, _ := NewSqlLiteStore(fileDsn, SqliteParams{}, nil)
+	assert.Nil(t, store.StoreContainer(user, Processed))
+
+	// Retrieve the LdpContainer from the Store
+	storeCopy, _ := store.(sqlLiteEventStore).retrieveContainer(user.Uri())
+
+	// Verify the properties
+	assert.Equal(t, expectedProperties, storeCopy.PassProperties())
 }
 
 func decodeTriples(t *testing.T, file string) []rdf.Triple {

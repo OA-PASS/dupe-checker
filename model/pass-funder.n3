@@ -1,0 +1,14 @@
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://fedora.info/definitions/v4/repository#Container> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oapass.org/ns/pass#Funder> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://fedora.info/definitions/v4/repository#Resource> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://fedora.info/definitions/v4/repository#lastModifiedBy> "fedoraAdmin"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://fedora.info/definitions/v4/repository#created> "2018-05-10T17:14:28.276Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://oapass.org/ns/pass#localKey> "johnshopkins.edu:funder:307521"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://dataconservancy.org/ns/jsonld#hasContext> <https://oa-pass.github.io/pass-data-model/src/main/resources/context-3.1.jsonld> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://fedora.info/definitions/v4/repository#lastModified> "2018-10-09T19:07:12.487Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://oapass.org/ns/pass#name> "EXCELA HEALTH"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://fedora.info/definitions/v4/repository#createdBy> "admin"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/ldp#RDFSource> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/ldp#Container> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://fedora.info/definitions/v4/repository#writable> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+<http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c> <http://fedora.info/definitions/v4/repository#hasParent> <http://fcrepo:8080/fcrepo/rest/funders> .

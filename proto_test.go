@@ -116,7 +116,7 @@ func decodeTriples(t *testing.T, file string) []rdf.Triple {
 }
 
 func Test_Fcrepo_Semaphore(t *testing.T) {
-	//artificialLimit := -1
+	artificialLimit := 20
 	maxFcrepoRequests := 100
 	container := LdpContainer{triples: decodeTriples(t, "/tmp/submission-container.n3")}
 	fcrepoThrottle := make(chan int, maxFcrepoRequests)
@@ -126,7 +126,7 @@ func Test_Fcrepo_Semaphore(t *testing.T) {
 	}
 
 	counter := struct {
-		mu sync.Mutex
+		mu    sync.Mutex
 		count int
 	}{}
 
@@ -154,15 +154,15 @@ func Test_Fcrepo_Semaphore(t *testing.T) {
 				assert.NotNil(t, resp)
 				assert.Equal(t, 200, resp.StatusCode)
 				_ = resp.Body.Close()
-				_ = <- fcrepoThrottle
+				_ = <-fcrepoThrottle
 			}(uri)
 		}
 	}()
 
 	for i, uri := range container.Contains() {
-		//if i > artificialLimit && i != -1 {
-		//	break
-		//}
+		if i > artificialLimit && i != -1 {
+			break
+		}
 		log.Printf("Writing %d uri to channel: %s", i, uri)
 		fcrepoReqs <- uri
 	}
@@ -172,7 +172,7 @@ func Test_Fcrepo_Semaphore(t *testing.T) {
 
 func Test_ReqStream(t *testing.T) {
 	c := &http.Client{
-		Timeout: 120*time.Second,
+		Timeout: 120 * time.Second,
 	}
 
 	//buf := &bytes.Buffer{}
@@ -202,7 +202,7 @@ func Test_ReqStream(t *testing.T) {
 		readErr = nil
 		responseReader := bufio.NewReader(res.Body)
 
-		for  {
+		for {
 			line, readErr = responseReader.ReadBytes('\n')
 			if firstRead.IsZero() {
 				firstRead = time.Now()
@@ -226,7 +226,7 @@ func Test_ReqStream(t *testing.T) {
 
 func Test_ReqLdp(t *testing.T) {
 	c := &http.Client{
-		Timeout: 120*time.Second,
+		Timeout: 120 * time.Second,
 	}
 
 	req, _ := http.NewRequest("GET", "http://fcrepo:8080/fcrepo/rest/submissions", nil)

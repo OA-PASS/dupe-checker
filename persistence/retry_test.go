@@ -135,19 +135,23 @@ func TestRetryStore_InvokesUnderlyingStoreContainer(t *testing.T) {
 }
 
 func TestRetryStore_MaxRetry(t *testing.T) {
+	underlyingCode := sqlite3.ErrLocked
+	underlyingError := sqlite3.Error{
+		Code: underlyingCode,
+	}
 	underTest := retryStore{
 		1 * time.Second,
 		1.2,
 		3,
 		nil,
-		[]error{sqlite3.ErrNo(8)},
+		[]error{underlyingCode},
 	}
+
+	storeErr := NewErrTx(begin, "a uri", underlyingError, "pkg", "method")
 
 	start := time.Now()
 	result := underTest.retry(underTest.maxTries, underTest.retryInterval, func() error {
-		return sqlite3.Error{
-			Code: sqlite3.ErrNo(8),
-		}
+		return storeErr
 	})
 
 	assert.True(t, time.Now().Sub(start).Seconds() >
@@ -157,13 +161,19 @@ func TestRetryStore_MaxRetry(t *testing.T) {
 }
 
 func TestRetryStore_RetrySuccessTry2(t *testing.T) {
+	underlyingCode := sqlite3.ErrLocked
+	underlyingError := sqlite3.Error{
+		Code: underlyingCode,
+	}
 	underTest := retryStore{
 		1 * time.Second,
 		1.2,
 		3,
 		nil,
-		[]error{sqlite3.ErrNo(8)},
+		[]error{underlyingCode},
 	}
+
+	storeErr := NewErrTx(begin, "a uri", underlyingError, "pkg", "method")
 
 	try := 0
 
@@ -174,9 +184,7 @@ func TestRetryStore_RetrySuccessTry2(t *testing.T) {
 			return nil
 		}
 
-		return sqlite3.Error{
-			Code: sqlite3.ErrNo(8),
-		}
+		return storeErr
 	})
 
 	assert.Nil(t, result)
@@ -214,26 +222,27 @@ func Test_ToErrorNonErrorValue(t *testing.T) {
 	assert.True(t, recoverCalled)
 }
 
+// Caught errors must be instances of persistence.StoreError.  Target errors must be SQLite ErrNo vars.
 func Test_CheckError(t *testing.T) {
-	caught := sqlite3.Error{
-		Code:         sqlite3.ErrNo(8),
-		ExtendedCode: 0,
-		SystemErrno:  0,
+	errCode := sqlite3.ErrNo(8)
+	err := sqlite3.Error{
+		Code: errCode,
 	}
 
-	target := sqlite3.ErrNo(8)
+	caught := NewErrTx(begin, "a uri", err, "pkg", "method")
+	target := errCode
 
 	assert.True(t, checkError(caught, target))
 }
 
 func Test_CheckErrorNoMatch(t *testing.T) {
-	caught := sqlite3.Error{
-		Code:         sqlite3.ErrNo(8),
-		ExtendedCode: 0,
-		SystemErrno:  0,
+	errCode := sqlite3.ErrNo(8)
+	err := sqlite3.Error{
+		Code: errCode,
 	}
 
 	target := sqlite3.ErrNo(7)
+	caught := NewErrTx(begin, "a uri", err, "pkg", "method")
 
 	assert.False(t, checkError(caught, target))
 }
@@ -246,11 +255,11 @@ func Test_CheckErrorCaughtNotSqlite(t *testing.T) {
 }
 
 func Test_CheckErrorTargetNotSqlite(t *testing.T) {
-	caught := sqlite3.Error{
-		Code:         sqlite3.ErrNo(8),
-		ExtendedCode: 0,
-		SystemErrno:  0,
+	errCode := sqlite3.ErrNo(8)
+	err := sqlite3.Error{
+		Code: errCode,
 	}
+	caught := NewErrTx(begin, "a uri", err, "pkg", "method")
 	target := errors.New("not an sqlite error")
 
 	assert.False(t, checkError(caught, target))

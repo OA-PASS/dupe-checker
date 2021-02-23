@@ -1,8 +1,10 @@
 package persistence
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/knakk/rdf"
 	"log"
@@ -15,12 +17,20 @@ import (
 )
 
 const (
-	selectContainerByUri = "SELECT container FROM main.containers WHERE container=?"
-	selectStateByUri     = "SELECT state FROM main.containers WHERE container=?"
-	updateStateByUri     = "UPDATE main.containers SET state = ? WHERE container = ?"
-	updateContainerByUri = "UPDATE main.containers SET container = ?, parent = ?, contains = ?, types = ?, state = ? WHERE container = ?"
-	insertState          = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
-	insertContainer      = "INSERT INTO main.containers (container, parent, contains, types, state) VALUES (?, ?, ?, ?, ?)"
+	createContainersTable = "CREATE TABLE IF NOT EXISTS main.containers (container text UNIQUE NOT NULL, parent text, pass text, types text, state integer NOT NULL)"
+	createParentIdx       = "CREATE INDEX IF NOT EXISTS main.parent_index ON containers (parent)"
+	selectContainerByUri  = "SELECT container FROM main.containers WHERE container=?"
+	selectStateByUri      = "SELECT state FROM main.containers WHERE container=?"
+	selectLdpcByUri       = "SELECT container, parent, pass, types FROM main.containers WHERE container=?"
+	updateStateByUri      = "UPDATE main.containers SET state = ? WHERE container = ?"
+	updateContainerByUri  = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
+	insertState           = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
+	insertContainer       = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
+)
+
+var (
+	hasParentIri, _ = rdf.NewIRI(fmt.Sprintf("%s%s", model.FedoraResourceUriPrefix, "hasParent"))
+	rdfTypeIri, _   = rdf.NewIRI(model.RdfTypeUri)
 )
 
 type SqliteParams struct {
@@ -59,37 +69,17 @@ func NewSqlLiteStore(dsn string, params SqliteParams, ctx context.Context) (Stor
 		return sqlLiteEventStore{}, err
 	}
 
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS main.containers (container text UNIQUE NOT NULL, parent text, contains text, types text, state integer NOT NULL)")
+	_, err = db.Exec(createContainersTable)
 
 	if err != nil {
 		return sqlLiteEventStore{}, err
 	}
 
-	_, err = db.Exec("CREATE INDEX IF NOT EXISTS main.parent_index ON containers (parent)")
+	_, err = db.Exec(createParentIdx)
 
 	if err != nil {
 		return sqlLiteEventStore{}, err
 	}
-
-	/*
-		rows, err = db.Query("SELECT name FROM sqlite_schema")//" WHERE type = 'table'")
-
-		if err != nil {
-			log.Fatalf(err.Error())
-		}
-
-		var tableName *string
-		tmp := ""
-		tableName = &tmp
-		for rows.Next() {
-			if err = rows.Scan(tableName); err != nil {
-				log.Fatalf(err.Error())
-			}
-			log.Printf("Got table name: %s", *tableName)
-		}
-
-		return nil, fmt.Errorf("store: Not Implemented")
-	*/
 
 	return sqlLiteEventStore{
 		ctx: ctx,
@@ -170,12 +160,17 @@ func (store sqlLiteEventStore) StoreContainer(c model.LdpContainer, s State) err
 	isUpdate := r.Next()
 	r.Close() // container exists
 
+	passProperties := bytes.Buffer{}
+	if err := marshalPassProperties(c, &passProperties); err != nil {
+		return err
+	}
+
 	if isUpdate {
-		if _, err = tx.Exec(updateContainerByUri, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s, c.Uri()); err != nil {
+		if _, err = tx.Exec(updateContainerByUri, c.Uri(), c.Parent(), passProperties.String(), strings.Join(c.Types(), ","), s, c.Uri()); err != nil {
 			return NewErrQuery(updateContainerByUri, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), fmt.Sprintf("%d", s), c.Uri())
 		}
 	} else {
-		if _, err = tx.Exec(insertContainer, c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), s); err != nil {
+		if _, err = tx.Exec(insertContainer, c.Uri(), c.Parent(), passProperties.String(), strings.Join(c.Types(), ","), s); err != nil {
 			return NewErrQuery(insertContainer, err, "persistence", "StoreContainer", c.Uri(), c.Parent(), strings.Join(c.Contains(), ","), strings.Join(c.Types(), ","), fmt.Sprintf("%d", s))
 		}
 	}
@@ -213,25 +208,29 @@ func (store sqlLiteEventStore) retrieveContainer(uri string) (model.LdpContainer
 	var r *sql.Rows
 	var err error
 
-	if r, err = store.db.Query("SELECT container, parent, contains, types FROM main.containers WHERE container=?", uri); err != nil {
-		return model.LdpContainer{}, err
+	if r, err = store.db.Query(selectLdpcByUri, uri); err != nil {
+		return model.LdpContainer{}, NewErrQuery(selectLdpcByUri, err, "persistence", "retrieveContainer", uri)
 	}
 
 	defer r.Close()
 
 	if r.Next() {
 		var (
-			container, parent, contains, types []byte
+			container, parent, pass, types []byte
 		)
-		if err = r.Scan(&container, &parent, &contains, &types); err != nil {
-			return model.LdpContainer{}, nil
+		if err = r.Scan(&container, &parent, &pass, &types); err != nil {
+			return model.LdpContainer{}, NewErrRowScan(selectLdpcByUri, err, "persistence", "retrieveContainer", uri)
 		}
 
 		triples := []rdf.Triple{}
 
-		for _, v := range strings.Split(string(contains), ",") {
-			subj, _ := rdf.NewIRI(string(container))
-			pred, _ := rdf.NewIRI(model.LdpContainsUri)
+		containerIri, _ := rdf.NewIRI(string(container))
+		parentIri, _ := rdf.NewIRI(string(parent))
+
+		// assemble rdf:type triples
+		for _, v := range strings.Split(string(types), ",") {
+			subj := containerIri
+			pred := rdfTypeIri
 			obj, _ := rdf.NewIRI(v)
 			triples = append(triples, rdf.Triple{
 				Subj: rdf.Subject(subj),
@@ -240,8 +239,50 @@ func (store sqlLiteEventStore) retrieveContainer(uri string) (model.LdpContainer
 			})
 		}
 
+		// assemble fedora:hasParent triple
+		triples = append(triples, rdf.Triple{
+			Subj: containerIri,
+			Pred: hasParentIri,
+			Obj:  parentIri,
+		})
+
+		// assemble pass:* triples
+		passProperties := map[string][]string{}
+		if err = json.Unmarshal(pass, &passProperties); err != nil {
+			return model.LdpContainer{},
+				NewErrDeserializeContainer(err, uri, "persistence", "retrieveContainer")
+		}
+
+		for property, values := range passProperties {
+			propIri, _ := rdf.NewIRI(property)
+
+			for _, v := range values {
+				if lit, err := rdf.NewLiteral(v); err != nil {
+					return model.LdpContainer{},
+						NewErrDeserializeContainer(err, uri, "persistence", "retrieveContainer")
+				} else {
+					triples = append(triples, rdf.Triple{
+						Subj: containerIri,
+						Pred: propIri,
+						Obj:  lit,
+					})
+				}
+			}
+
+		}
+
 		return model.NewContainer(triples), nil
 	}
 
-	return model.LdpContainer{}, fmt.Errorf("persistence: no container found: %s", uri)
+	return model.LdpContainer{}, NewErrNoResults(selectLdpcByUri, "persistence", "retrieveContainer", uri)
+}
+
+func marshalPassProperties(c model.LdpContainer, props *bytes.Buffer) error {
+	if result, err := json.Marshal(c.PassProperties()); err != nil {
+		return NewErrSerializeContainer(err, c.Uri(), "persistence", "marshalPassProperties")
+	} else {
+		props.Write(result)
+	}
+
+	return nil
 }

@@ -1,8 +1,11 @@
 package model
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/knakk/rdf"
+	"io"
 	"log"
 	"strings"
 )
@@ -72,6 +75,26 @@ func (ldpc LdpContainer) IsPassResource() (bool, string) {
 	return false, ""
 }
 
+// Answers the objects of all triples matching PASS resources (i.e. the object of any predicate beginning with the PASS
+// prefix)
+func (ldpc LdpContainer) PassProperties() map[string][]string {
+	passProperties := make(map[string][]string)
+	passTriples := ldpc.filterTriple(func(triple rdf.Triple) bool {
+		return strings.HasPrefix(triple.Pred.String(), PassResourceUriPrefix)
+	})
+
+	for _, t := range passTriples {
+		key := t.Pred.String()
+		if val, exists := passProperties[key]; exists {
+			passProperties[key] = append(val, t.Obj.String())
+		} else {
+			passProperties[key] = []string{t.Obj.String()}
+		}
+	}
+
+	return passProperties
+}
+
 // Answers whether or not this container asserts the supplied type (i.e. the object of any rdf:type predicate matches)
 func (ldpc LdpContainer) AssertsType(rdfType string) bool {
 	matches := ldpc.filterTriple(func(triple rdf.Triple) bool {
@@ -86,6 +109,16 @@ func (ldpc LdpContainer) Contains() []string {
 	return ldpc.filterPred(func(pred string) bool {
 		return pred == LdpContainsUri
 	})
+}
+
+func marshalPassProperties(c LdpContainer, props *bytes.Buffer) error {
+	if result, err := json.Marshal(c.PassProperties()); err != nil {
+		return err
+	} else {
+		props.Write(result)
+	}
+
+	return nil
 }
 
 // Return all triples from the container that match the triple filter
@@ -109,4 +142,32 @@ func (ldpc LdpContainer) filterPred(predFilter func(string) bool) []string {
 		}
 	}
 	return types
+}
+
+func (ldpc LdpContainer) dumpTriples(w io.Writer, format rdf.Format) {
+	for _, triple := range ldpc.triples {
+		line := fmt.Sprintf("%s", triple.Serialize(format))
+		w.Write([]byte(line))
+	}
+}
+
+// Returns an LdpContainer represented by 'embeddedResource'.  The resource is expected to be a full RDF representation
+// of an LDP Container in n-triples format.
+//
+// Intended as a test utility.
+func ReadContainer(embeddedResource string) (LdpContainer, error) {
+	return NewContainerFromReader(strings.NewReader(embeddedResource), rdf.NTriples)
+}
+
+// Returns an LdpContainer represented by the contents of the io.Reader.  The resource is expected to be a full RDF
+// representation of an LDP Container in the specified format.
+//
+// Intended as a test utility.
+func NewContainerFromReader(r io.Reader, f rdf.Format) (LdpContainer, error) {
+	dec := rdf.NewTripleDecoder(r, f)
+	if triples, err := dec.DecodeAll(); err != nil {
+		return LdpContainer{}, err
+	} else {
+		return NewContainer(triples), nil
+	}
 }

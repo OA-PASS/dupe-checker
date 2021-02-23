@@ -42,6 +42,38 @@ func (se StoreErr) Unwrap() error {
 	return se.Wrapped
 }
 
+var ErrPrepareQuery = errors.New("error preparing query")
+
+func NewErrPrepareQuery(underlying error, query, pkg, method string) StoreErr {
+	return StoreErr{
+		Message:    fmt.Sprintf("%s %s: error preparing query '%s': %v", pkg, method, query, underlying),
+		Wrapped:    ErrPrepareQuery,
+		Underlying: underlying,
+	}
+}
+
+var ErrDeserializeContainer = errors.New("error deserializing LDPC")
+
+func NewErrDeserializeContainer(underlying error, uri, pkg, method string) StoreErr {
+	return StoreErr{
+		Uri:        uri,
+		Message:    fmt.Sprintf("%s %s: error deserializing LDP container %s: %v", pkg, method, uri, underlying),
+		Wrapped:    ErrDeserializeContainer,
+		Underlying: underlying,
+	}
+}
+
+var ErrSerializeContainer = errors.New("error serializing LDPC")
+
+func NewErrSerializeContainer(underlying error, uri, pkg, method string) StoreErr {
+	return StoreErr{
+		Uri:        uri,
+		Message:    fmt.Sprintf("%s %s: error serializing LDP container %s: %v", pkg, method, uri, underlying),
+		Wrapped:    ErrSerializeContainer,
+		Underlying: underlying,
+	}
+}
+
 var ErrClose = errors.New("error closing result or connection")
 
 func NewErrClose(underlying error, pkg string, method string) StoreErr {
