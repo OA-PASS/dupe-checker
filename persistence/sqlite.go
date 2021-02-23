@@ -26,6 +26,7 @@ const (
 	updateContainerByUri  = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
 	insertState           = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
 	insertContainer       = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
+	// TODO? selectChildren        = "SELECT container FROM main.containers WHERE parent=?"
 )
 
 var (
