@@ -184,7 +184,7 @@ func TestVisitor_Walk(t *testing.T) {
 				//   child resource is not accepted, it will never be processed and therefore its parent container cannot
 				//   be either
 				// if all children are processed, update container state to processed
-			case EventProcessedForDupes:
+			case EventProcessedContainer:
 				if err := store.StoreUri(event.Target, persistence.Processed); err != nil {
 					log.Printf("%v", err)
 				} else {

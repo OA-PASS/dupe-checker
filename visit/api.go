@@ -10,7 +10,7 @@ const (
 	EventDescendEnd
 	EventDescendStartContainer
 	EventDescendEndContainer
-	EventProcessedForDupes
+	EventProcessedContainer
 )
 
 type Event struct {
