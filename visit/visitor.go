@@ -5,7 +5,7 @@ package visit
 
 import (
 	"dupe-checker/model"
-	"dupe-checker/retriever"
+	"dupe-checker/retrieve"
 	"fmt"
 	"log"
 	"sync"
@@ -13,7 +13,7 @@ import (
 
 type ConcurrentVisitor struct {
 	// retrieves LDP containers; invocation is gated by the semaphore
-	retriever retriever.Retriever
+	retriever retrieve.Retriever
 	// gates the maximum number of requests which may be performed in parallel
 	semaphore chan int
 	// Resources which are accepted are written to this channel
@@ -39,7 +39,7 @@ var defaultAccept = func(c model.LdpContainer) bool {
 
 // Constructs a new ConcurrentVisitor instance using the supplied Retriever.  At most maxConcurrent requests are performed in
 // parallel.
-func New(retriever retriever.Retriever, maxConcurrent int) ConcurrentVisitor {
+func New(retriever retrieve.Retriever, maxConcurrent int) ConcurrentVisitor {
 	return ConcurrentVisitor{
 		retriever:  retriever,
 		semaphore:  make(chan int, maxConcurrent),

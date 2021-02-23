@@ -1,6 +1,6 @@
 // +build integration
 
-package retriever
+package retrieve
 
 import (
 	"github.com/stretchr/testify/assert"
@@ -26,4 +26,3 @@ func Test_SimpleGet(t *testing.T) {
 	assert.Nil(t, err)
 	assert.True(t, len(c.Contains()) > 1000)
 }
-

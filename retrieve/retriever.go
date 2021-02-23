@@ -1,5 +1,5 @@
 // Responsible for creating and executing HTTP requests for LDP containers
-package retriever
+package retrieve
 
 import (
 	"dupe-checker/model"

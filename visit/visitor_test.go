@@ -5,7 +5,7 @@ package visit
 import (
 	"dupe-checker/model"
 	"dupe-checker/persistence"
-	"dupe-checker/retriever"
+	"dupe-checker/retrieve"
 	"errors"
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -74,7 +74,7 @@ func TestVisitor_Walk(t *testing.T) {
 
 	maxSimultaneousReqs := 5
 
-	underTest := New(retriever.New(client, "fedoraAdmin", "moo", "TestVisitor_Walk"), maxSimultaneousReqs)
+	underTest := New(retrieve.New(client, "fedoraAdmin", "moo", "TestVisitor_Walk"), maxSimultaneousReqs)
 
 	filter := func(container model.LdpContainer) bool {
 		// check persistence store:
