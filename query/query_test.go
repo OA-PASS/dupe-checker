@@ -21,6 +21,9 @@ var queryConfigSimpleOrArray string
 //go:embed queryconfig-simple-or-obj.json
 var queryConfigSimpleOrObj string
 
+//go:embed queryconfig-nested-or.json
+var queryConfigNestedOr string
+
 func Test_DecodeSimpleOrObject(t *testing.T) {
 	plans := decoder{}.Decode(queryConfigSimpleOrObj)
 
@@ -37,6 +40,16 @@ func Test_DecodeSimpleOrArray(t *testing.T) {
 	assert.Equal(t, 1, len(plans))
 
 	verifyPlans(t, plans, 2, 3)
+}
+
+func Test_DecodeNestedOrArray(t *testing.T) {
+	plans := decoder{}.Decode(queryConfigNestedOr)
+
+	assert.NotNil(t, plans)
+	assert.Equal(t, 1, len(plans))
+
+	verifyPlans(t, plans, 3, 4)
+
 }
 
 func verifyPlans(t *testing.T, plans map[string]Plan, expectedBuiltCount, expectedTotalCount int) {

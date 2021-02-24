@@ -128,8 +128,21 @@ type tmplBuilderImpl struct {
 func newTmplBuilder() tmplBuilderImpl {
 	return tmplBuilderImpl{}
 }
+func (tb *tmplBuilderImpl) checkBuilt(msg string, shouldPanic bool) error {
+	if tb.built {
+		if shouldPanic {
+			panic(msg)
+		} else {
+			return errors.New(msg)
+		}
+	}
 
+	return nil
+}
 func (tb *tmplBuilderImpl) AddKey(key string) TemplateBuilder {
+	tb.checkBuilt(
+		fmt.Sprintf("illegal state: cannot append key '%s' to existing keys '%s': already built\n%s", key, strings.Join(tb.keys, ","), tb), true)
+
 	if tb.keys == nil {
 		tb.keys = []string{key}
 	} else {
@@ -140,10 +153,13 @@ func (tb *tmplBuilderImpl) AddKey(key string) TemplateBuilder {
 }
 
 func (tb *tmplBuilderImpl) AddQuery(query string) TemplateBuilder {
+	tb.checkBuilt(
+		fmt.Sprintf("illegal state: cannot overwrite existing query '%s' with query '%s': already built\n%s", tb.query, query, tb), true)
+
 	if len(tb.query) == 0 {
 		tb.query = query
 	} else {
-		log.Fatalf("illegal state: cannot overwrite existing query '%s' with query '%s'", tb.query, query)
+		log.Fatalf("illegal state: cannot overwrite existing query '%s' with query '%s'\n%s", tb.query, query, tb)
 	}
 
 	return tb

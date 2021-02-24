@@ -1,0 +1,32 @@
+{
+  "http://oapass.org/ns/pass#Publication": {
+    "query": {
+      "or":   [
+        {
+          "or": [
+            {
+              "keys": [
+                "doi"
+              ],
+
+              "q": "es query for doi"
+            },
+            {
+              "keys": [
+                "pmid"
+              ],
+
+              "q": "es query for pmid"
+            }
+          ]
+        },
+        {
+          "keys": [
+            "title"
+          ],
+          "q": "es query for title"
+        }
+      ]
+    }
+  }
+}
