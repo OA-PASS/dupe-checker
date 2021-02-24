@@ -2,6 +2,7 @@ package query
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -13,6 +14,7 @@ var (
 	andT   = token("and")
 	keysT  = token("keys")
 	qT     = token("q")
+	nilT   = token("nil")
 )
 
 type token string
@@ -30,7 +32,6 @@ type decoder struct{}
 func (decoder) Decode(config string) map[string]Plan {
 	plans := make(map[string]Plan)
 	dec := json.NewDecoder(strings.NewReader(config))
-	level := 0
 	stack := tokenStack{[]token{}}
 	builder := newPlanBuilder()
 
@@ -46,43 +47,85 @@ func (decoder) Decode(config string) map[string]Plan {
 			break
 		}
 		if err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
 
-		//log.Printf("handling: %v", t)
+		log.Printf("handling: %v", t)
 
 		switch t.(type) {
 		case json.Delim:
 			switch t.(json.Delim).String() {
 			case "{":
-				level++
+				switch stack.peek() {
+				case orT:
+					// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
+					// active template being built
+					tmplBuilder = builder.Or()
+				}
 			case "}":
-				level--
 				if stack.size() > 0 {
 					popped := stack.pop()
 					switch popped {
 					case orT:
-						if built, err := tmplBuilder.Build(); err != nil {
-							log.Fatal(err)
-						} else {
-							builder.AddPlan(built)
-						}
+						//if built, err := tmplBuilder.Build(); err != nil {
+						//	log.Fatal(err)
+						//} else {
+						//	builder.AddPlan(built)
+						//}
 					case qT:
 						// TODO
 					case queryT:
 						if p, err := builder.Build(); err != nil {
-							log.Fatal(err)
+							panic(err)
 						} else {
 							plans[passType] = p
 						}
 					default:
 						// TODO
-						log.Fatalf("unhandled popped token %v", popped)
+						panic(fmt.Sprintf("unhandled popped token %v", popped))
+					}
+				}
+
+				// We are ending the first object in this array of "or" objects
+				// (we just popped the first 'q' token)
+				//   "or": [
+				//        {
+				//          "keys": [
+				//            "nlmta"
+				//          ],
+				//          "q": "es query for nlmta"
+				//        },
+				//        {
+				//          "keys": [
+				//            "journalName",
+				//            "issn"
+				//          ],
+				//          "q": "es query for journalName and issn"
+				//        }
+				//      ]
+				if stack.peek() == orT || stack.peek() == andT {
+					if built, err := tmplBuilder.Build(); err != nil {
+						panic(err)
+					} else {
+						builder.AddPlan(built)
 					}
 				}
 			case "]":
-				if stack.size() > 0 {
-					stack.pop()
+				_ = stack.pop()
+				//switch popped {
+				//case orT:
+				//	if built, err := tmplBuilder.Build(); err != nil {
+				//		panic(err)
+				//	} else {
+				//		builder.AddPlan(built)
+				//	}
+				//}
+			case "[":
+				switch stack.peek() {
+				case orT:
+					// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
+					// active template being built
+					tmplBuilder = builder.Or()
 				}
 			}
 		case string:
@@ -91,9 +134,6 @@ func (decoder) Decode(config string) map[string]Plan {
 				stack.push(queryT)
 			case orT:
 				stack.push(orT)
-				// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
-				// active template being built
-				tmplBuilder = builder.Or()
 			case andT:
 				stack.push(andT)
 				// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
@@ -106,7 +146,7 @@ func (decoder) Decode(config string) map[string]Plan {
 			default:
 				if stack.size() > 0 {
 					if tmplBuilder == nil {
-						log.Fatalf("no template builder present (has PlanBuilder().Or() or PlanBuilder.And() been invoked and stored?)")
+						panic("no template builder present (has PlanBuilder().Or() or PlanBuilder.And() been invoked and stored?)")
 					}
 					log.Printf("Have a value for '%s': %v", stack.peek(), t)
 					// add the key or query to the TemplateBuilder
@@ -116,7 +156,7 @@ func (decoder) Decode(config string) map[string]Plan {
 					case qT:
 						tmplBuilder.AddQuery(t.(string))
 					default:
-						log.Fatalf("Unknown token %v in 'query' object", t)
+						panic(fmt.Sprintf("Unknown token %v in 'query' object", t))
 					}
 				} else {
 					// have a top level key representing a PASS type
@@ -138,12 +178,18 @@ func (ts *tokenStack) push(t token) {
 }
 
 func (ts *tokenStack) pop() token {
+	if ts.size() == 0 {
+		panic("cannot pop an empty stack")
+	}
 	popped := ts.stack[len(ts.stack)-1]
 	ts.stack = ts.stack[0 : len(ts.stack)-1]
 	return popped
 }
 
 func (ts *tokenStack) peek() token {
+	if ts.size() == 0 {
+		return nilT
+	}
 	return ts.stack[len(ts.stack)-1]
 }
 

@@ -21,34 +21,67 @@ var queryConfigSimpleOrArray string
 //go:embed queryconfig-simple-or-obj.json
 var queryConfigSimpleOrObj string
 
-func Test_DecodeConfig2(t *testing.T) {
+func Test_DecodeSimpleOrObject(t *testing.T) {
 	plans := decoder{}.Decode(queryConfigSimpleOrObj)
 
 	assert.NotNil(t, plans)
 	assert.True(t, len(plans) > 0)
+
+	verifyPlans(t, plans, 1, 1)
+}
+
+func Test_DecodeSimpleOrArray(t *testing.T) {
+	plans := decoder{}.Decode(queryConfigSimpleOrArray)
+
+	assert.NotNil(t, plans)
+	assert.Equal(t, 1, len(plans))
+
+	verifyPlans(t, plans, 2, 3)
+}
+
+func verifyPlans(t *testing.T, plans map[string]Plan, expectedBuiltCount, expectedTotalCount int) {
+	actualTotalCount := 0
+	actualBuiltCount := 0
 
 	for k, v := range plans {
 		log.Printf("Plan for type %s:\n%s", k, v)
 		if v, ok := v.(*planBuilderImpl); ok {
 			assert.True(t, v.built)
 			for sub := v.subordinate; sub != nil; {
-				assert.True(t, sub.built)
+				if sub.built {
+					for _, tmplBuilder := range sub.templateBuilders {
+						actualTotalCount++
+						if tmplBuilder.built {
+							actualBuiltCount++
+							assert.NotZero(t, tmplBuilder.query)
+							assert.NotZero(t, tmplBuilder.keys)
+							for _, v := range tmplBuilder.keys {
+								assert.NotZero(t, v)
+							}
+						}
+					}
+				}
+
 				sub = sub.subordinate
 			}
 
-			assert.True(t, len(v.templateBuilders) > 0)
 			for _, tmplBuilder := range v.templateBuilders {
-				assert.True(t, tmplBuilder.built)
-				assert.NotZero(t, tmplBuilder.query)
-				assert.NotZero(t, tmplBuilder.keys)
-				for _, v := range tmplBuilder.keys {
-					assert.NotZero(t, v)
+				actualTotalCount++
+				if tmplBuilder.built {
+					actualBuiltCount++
+					assert.NotZero(t, tmplBuilder.query)
+					assert.NotZero(t, tmplBuilder.keys)
+					for _, v := range tmplBuilder.keys {
+						assert.NotZero(t, v)
+					}
 				}
 			}
 		} else {
 			assert.True(t, ok, "plan not an instance of *planBuilderImpl, was %T", v)
 		}
 	}
+	assert.Equal(t, expectedBuiltCount, actualBuiltCount)
+	assert.Equal(t, expectedTotalCount, actualTotalCount)
 }
 
 func Test_DecodeConfig(t *testing.T) {

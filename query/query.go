@@ -162,7 +162,7 @@ func (tb *tmplBuilderImpl) Build() (Plan, error) {
 }
 
 func (tb *tmplBuilderImpl) String() string {
-	return fmt.Sprintf("(%T) built: %t keys: %s q: %s\n", tb, tb.built, strings.Join(tb.keys, ","), tb.query)
+	return fmt.Sprintf("(%T) built: %t keys: '%s' q: '%s'\n", tb, tb.built, strings.Join(tb.keys, ","), tb.query)
 }
 
 func (tb *tmplBuilderImpl) Execute(handler func(result string) error) error {
@@ -186,14 +186,12 @@ func (pb planBuilderImpl) string(sb *strings.Builder, leadIndent, indent string)
 		sb.WriteString(fmt.Sprintf("%s  subordinate: ", indent))
 		pb.subordinate.string(sb, "", indent+"  ")
 	} else {
-		sb.WriteString(fmt.Sprintf("%s  subordinate: nil", indent))
+		sb.WriteString(fmt.Sprintf("%s  subordinate: nil\n", indent))
 	}
 
 	for _, v := range pb.templateBuilders {
-		sb.WriteString(fmt.Sprintf("%s  templates:\n    %s", indent, v))
+		sb.WriteString(fmt.Sprintf("%s  template: %s", indent, v))
 	}
-
-	sb.WriteString("\n")
 
 	return sb.String()
 }
