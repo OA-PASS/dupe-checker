@@ -1,0 +1,12 @@
+{
+  "http://oapass.org/ns/pass#Journal": {
+    "query": {
+      "or": {
+        "keys": [
+          "nlmta"
+        ],
+        "q": "es query for nlmta"
+      }
+    }
+  }
+}
