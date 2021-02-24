@@ -1,0 +1,99 @@
+{
+  "http://oapass.org/ns/pass#Journal": {
+    "query": {
+      "or": [
+        {
+          "keys": [
+            "nlmta"
+          ],
+          "q": "es query for nlmta"
+        },
+        {
+          "keys": [
+            "journalName",
+            "issn"
+          ],
+          "q": "es query for journalName and issn"
+        }
+      ]
+    }
+  },
+  "http://oapass.org/ns/pass#Publication": {
+    "query": {
+      "or":   [
+        {
+          "or": [
+            {
+              "keys": [
+                "doi"
+              ],
+
+              "q": "es query for doi"
+            },
+            {
+              "keys": [
+                "pmid"
+              ],
+
+              "q": "es query for pmid"
+            }
+          ]
+        },
+        {
+          "keys": [
+            "title"
+          ],
+          "q": "es query for title"
+        }
+      ]
+    }
+  },
+  "http://oapass.org/ns/pass#Funder": {
+    "query": {
+      "keys": [
+        "localKey"
+      ],
+      "q": "es query for localKey"
+    }
+  },
+  "http://oapass.org/ns/pass#Grant": {
+    "query": {
+      "keys": [
+        "localKey"
+      ],
+      "q": "es query for localKey"
+    }
+  },
+  "http://oapass.org/ns/pass#User": {
+    "query": {
+      "keys": [
+        "locatorIds"
+      ],
+      "q": "es query for locatorIds"
+    }
+  },
+  "http://oapass.org/ns/pass#RepositoryCopy": {
+    "keys": [
+      "accessUrl",
+      "publication",
+      "repository"
+    ],
+    "query": {
+      "or": [
+        {
+          "keys": [
+            "accessUrl"
+          ],
+          "q": "es query for accessUrl"
+        },
+        {
+          "keys": [
+            "publication",
+            "repository"
+          ],
+          "q": "es query for publication and repository"
+        }
+      ]
+    }
+  }
+}
