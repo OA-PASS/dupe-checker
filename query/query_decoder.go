@@ -61,6 +61,7 @@ func (decoder) Decode(config string) map[string]Plan {
 					// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
 					// active template being built
 					tmplBuilder = builder.Or()
+					log.Printf("created builder for token '%s': %T@%p", orT, tmplBuilder, tmplBuilder)
 				}
 			case "}":
 				if stack.size() > 0 {
@@ -104,6 +105,7 @@ func (decoder) Decode(config string) map[string]Plan {
 				//        }
 				//      ]
 				if stack.peek() == orT || stack.peek() == andT {
+					log.Printf("building builder for token '%s': %T@%p", stack.peek(), tmplBuilder, tmplBuilder)
 					if built, err := tmplBuilder.Build(); err != nil {
 						panic(err)
 					} else {

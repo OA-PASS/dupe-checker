@@ -128,7 +128,7 @@ type tmplBuilderImpl struct {
 func newTmplBuilder() tmplBuilderImpl {
 	return tmplBuilderImpl{}
 }
-func (tb *tmplBuilderImpl) checkBuilt(msg string, shouldPanic bool) error {
+func (tb *tmplBuilderImpl) ifBuilt(msg string, shouldPanic bool) error {
 	if tb.built {
 		if shouldPanic {
 			panic(msg)
@@ -140,8 +140,8 @@ func (tb *tmplBuilderImpl) checkBuilt(msg string, shouldPanic bool) error {
 	return nil
 }
 func (tb *tmplBuilderImpl) AddKey(key string) TemplateBuilder {
-	tb.checkBuilt(
-		fmt.Sprintf("illegal state: cannot append key '%s' to existing keys '%s': already built\n%s", key, strings.Join(tb.keys, ","), tb), true)
+	tb.ifBuilt(
+		fmt.Sprintf("illegal state: cannot append key '%s' to existing keys '%s': already built %T@%p\n%s", key, strings.Join(tb.keys, ","), tb, tb, tb), true)
 
 	if tb.keys == nil {
 		tb.keys = []string{key}
@@ -153,13 +153,13 @@ func (tb *tmplBuilderImpl) AddKey(key string) TemplateBuilder {
 }
 
 func (tb *tmplBuilderImpl) AddQuery(query string) TemplateBuilder {
-	tb.checkBuilt(
-		fmt.Sprintf("illegal state: cannot overwrite existing query '%s' with query '%s': already built\n%s", tb.query, query, tb), true)
+	tb.ifBuilt(
+		fmt.Sprintf("illegal state: cannot overwrite existing query '%s' with query '%s': already built %T@%p\n%s", tb.query, query, tb, tb, tb), true)
 
 	if len(tb.query) == 0 {
 		tb.query = query
 	} else {
-		log.Fatalf("illegal state: cannot overwrite existing query '%s' with query '%s'\n%s", tb.query, query, tb)
+		panic(fmt.Sprintf("illegal state: cannot overwrite existing query '%s' with query '%s': %T@%p\n%s", tb.query, query, tb, tb, tb))
 	}
 
 	return tb
@@ -170,9 +170,7 @@ func (tb *tmplBuilderImpl) AddPlan(p Plan) Plan {
 }
 
 func (tb *tmplBuilderImpl) Build() (Plan, error) {
-	if tb.built {
-		return nil, errors.New("illegal state: this TemplateBuilder has already been built")
-	}
+	tb.ifBuilt(fmt.Sprintf("illegal state: this %T@%p has already been built\n%s", tb, tb, tb), true)
 	tb.built = true
 	return tb, nil
 }
