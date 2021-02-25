@@ -19,8 +19,13 @@ var (
 
 type token string
 
+type tokenElement struct {
+	t  token
+	tb *TemplateBuilder
+}
+
 type tokenStack struct {
-	stack []token
+	elements []*tokenElement
 }
 
 type ConfigDecoder interface {
@@ -32,7 +37,7 @@ type decoder struct{}
 func (decoder) Decode(config string) map[string]Plan {
 	plans := make(map[string]Plan)
 	dec := json.NewDecoder(strings.NewReader(config))
-	stack := tokenStack{[]token{}}
+	stack := tokenStack{}
 	builder := newPlanBuilder()
 
 	var (
@@ -42,7 +47,7 @@ func (decoder) Decode(config string) map[string]Plan {
 
 	for {
 
-		t, err := dec.Token()
+		jsonToken, err := dec.Token()
 		if err == io.EOF {
 			break
 		}
@@ -50,23 +55,28 @@ func (decoder) Decode(config string) map[string]Plan {
 			panic(err)
 		}
 
-		log.Printf("handling: %v", t)
+		log.Printf("handling: %v", jsonToken)
 
-		switch t.(type) {
+		switch jsonToken.(type) {
 		case json.Delim:
-			switch t.(json.Delim).String() {
+			switch jsonToken.(json.Delim).String() {
 			case "{":
-				switch stack.peek() {
+				switch e := stack.peek(); e.t {
 				case orT:
+					// Verify stack element does not carry a builder at this point
+					if e.tb != nil {
+						panic(fmt.Sprintf("illegal state: token %s already has a %T: %p", orT, e.tb, e.tb))
+					}
 					// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
 					// active template being built
 					tmplBuilder = builder.Or()
 					log.Printf("created builder for token '%s': %T@%p", orT, tmplBuilder, tmplBuilder)
+					// Update the stack element
+					e.tb = &tmplBuilder
 				}
 			case "}":
 				if stack.size() > 0 {
-					popped := stack.pop()
-					switch popped {
+					switch popped := stack.popE(); popped.t {
 					case orT:
 						//if built, err := tmplBuilder.Build(); err != nil {
 						//	log.Fatal(err)
@@ -104,8 +114,8 @@ func (decoder) Decode(config string) map[string]Plan {
 				//          "q": "es query for journalName and issn"
 				//        }
 				//      ]
-				if stack.peek() == orT || stack.peek() == andT {
-					log.Printf("building builder for token '%s': %T@%p", stack.peek(), tmplBuilder, tmplBuilder)
+				if stack.peek().t == orT || stack.peek().t == andT {
+					log.Printf("building builder for token '%s': %T@%p", stack.peek().t, tmplBuilder, tmplBuilder)
 					if built, err := tmplBuilder.Build(); err != nil {
 						panic(err)
 					} else {
@@ -113,7 +123,7 @@ func (decoder) Decode(config string) map[string]Plan {
 					}
 				}
 			case "]":
-				_ = stack.pop()
+				_ = stack.popE()
 				//switch popped {
 				//case orT:
 				//	if built, err := tmplBuilder.Build(); err != nil {
@@ -123,47 +133,44 @@ func (decoder) Decode(config string) map[string]Plan {
 				//	}
 				//}
 			case "[":
-				switch stack.peek() {
+				switch e := stack.peek(); e.t {
 				case orT:
+					// Verify stack element does not carry a builder at this point
+					if e.tb != nil {
+						panic(fmt.Sprintf("illegal state: token %s already has a %T: %p", orT, e.tb, e.tb))
+					}
+
 					// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
 					// active template being built
 					tmplBuilder = builder.Or()
+					log.Printf("created builder for token '%s': %T@%p", orT, tmplBuilder, tmplBuilder)
+					// Update the stack element
+					e.tb = &tmplBuilder
 				}
 			}
 		case string:
-			switch token(t.(string)) {
-			case queryT:
-				stack.push(queryT)
-			case orT:
-				stack.push(orT)
-			case andT:
-				stack.push(andT)
-				// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
-				// active template being built
-				//tmplBuilder = builder.And()
-			case keysT:
-				stack.push(keysT)
-			case qT:
-				stack.push(qT)
+			switch t := token(jsonToken.(string)); t {
+			case queryT, orT, andT, keysT, qT:
+				stack.push(t, nil)
 			default:
 				if stack.size() > 0 {
 					if tmplBuilder == nil {
 						panic("no template builder present (has PlanBuilder().Or() or PlanBuilder.And() been invoked and stored?)")
 					}
-					log.Printf("Have a value for '%s': %v", stack.peek(), t)
+					log.Printf("Have a value for '%s': %v", stack.peek().t, jsonToken)
 					// add the key or query to the TemplateBuilder
-					switch stack.peek() {
+					switch e := stack.peek(); e.t {
 					case keysT:
-						tmplBuilder.AddKey(t.(string))
+						tmplBuilder.AddKey(jsonToken.(string))
 					case qT:
-						tmplBuilder.AddQuery(t.(string))
+						tmplBuilder.AddQuery(jsonToken.(string))
 					default:
-						panic(fmt.Sprintf("Unknown token %v in 'query' object", t))
+						panic(fmt.Sprintf("Unknown token %v in 'query' object", jsonToken))
 					}
 				} else {
 					// have a top level key representing a PASS type
-					log.Printf("Have a PASS type: %v", t)
-					passType = t.(string)
+					log.Printf("Have a PASS type: %v", jsonToken)
+					passType = jsonToken.(string)
 					//_ = builder.ForResource(t.(string))
 				}
 			}
@@ -175,26 +182,36 @@ func (decoder) Decode(config string) map[string]Plan {
 	return plans
 }
 
-func (ts *tokenStack) push(t token) {
-	ts.stack = append(ts.stack, t)
+func (ts *tokenStack) pushE(element tokenElement) {
+	e := element // copy the value
+	ts.elements = append(ts.elements, &e)
 }
 
-func (ts *tokenStack) pop() token {
+func (ts *tokenStack) push(t token, b *TemplateBuilder) {
+	ts.elements = append(ts.elements, &tokenElement{t, b})
+}
+
+func (ts *tokenStack) popE() *tokenElement {
 	if ts.size() == 0 {
 		panic("cannot pop an empty stack")
 	}
-	popped := ts.stack[len(ts.stack)-1]
-	ts.stack = ts.stack[0 : len(ts.stack)-1]
+	popped := ts.elements[len(ts.elements)-1]
+	ts.elements = ts.elements[0 : len(ts.elements)-1]
 	return popped
 }
 
-func (ts *tokenStack) peek() token {
+func (ts *tokenStack) pop() (token, TemplateBuilder) {
+	e := ts.popE()
+	return e.t, *e.tb
+}
+
+func (ts *tokenStack) peek() tokenElement {
 	if ts.size() == 0 {
-		return nilT
+		return tokenElement{nilT, nil}
 	}
-	return ts.stack[len(ts.stack)-1]
+	return *ts.elements[len(ts.elements)-1]
 }
 
 func (ts *tokenStack) size() int {
-	return len(ts.stack)
+	return len(ts.elements)
 }

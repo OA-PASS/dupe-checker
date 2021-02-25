@@ -2,13 +2,10 @@ package query
 
 import (
 	_ "embed"
-	"encoding/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/yourbasic/graph"
 	"github.com/yourbasic/graph/build"
-	"io"
 	"log"
-	"strings"
 	"testing"
 )
 
@@ -97,6 +94,7 @@ func verifyPlans(t *testing.T, plans map[string]Plan, expectedBuiltCount, expect
 	assert.Equal(t, expectedTotalCount, actualTotalCount)
 }
 
+/*
 func Test_DecodeConfig(t *testing.T) {
 	plans := make(map[string]Plan)
 	var passType string
@@ -125,7 +123,7 @@ func Test_DecodeConfig(t *testing.T) {
 			case "}":
 				level--
 				if queryTokenStack.size() > 0 {
-					popped := queryTokenStack.pop()
+					popped := queryTokenStack.popE()
 					switch popped {
 					case orT:
 						if built, err := tmplBuilder.Build(); err != nil {
@@ -148,27 +146,27 @@ func Test_DecodeConfig(t *testing.T) {
 				}
 			case "]":
 				if queryTokenStack.size() > 0 {
-					queryTokenStack.pop()
+					queryTokenStack.popE()
 				}
 			}
 		case string:
 			switch token(t.(string)) {
 			case queryT:
-				queryTokenStack.push(queryT)
+				queryTokenStack.pushE(queryT)
 			case orT:
-				queryTokenStack.push(orT)
+				queryTokenStack.pushE(orT)
 				// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
 				// active template being built
 				tmplBuilder = builder.Or()
 			case andT:
-				queryTokenStack.push(andT)
+				queryTokenStack.pushE(andT)
 				// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
 				// active template being built
 				//tmplBuilder = builder.And()
 			case keysT:
-				queryTokenStack.push(keysT)
+				queryTokenStack.pushE(keysT)
 			case qT:
-				queryTokenStack.push(qT)
+				queryTokenStack.pushE(qT)
 			default:
 				if queryTokenStack.size() > 0 {
 					if tmplBuilder == nil {
@@ -212,8 +210,7 @@ func Test_DecodeConfig(t *testing.T) {
 			}
 			fmt.Printf("\n")
 		}
-	*/
-}
+*/
 
 func Test_Protoype(t *testing.T) {
 	g := graph.New(5)
