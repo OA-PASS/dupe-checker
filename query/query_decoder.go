@@ -185,10 +185,11 @@ func (decoder) Decode(config string) map[string]Plan {
 func (ts *tokenStack) pushE(element tokenElement) {
 	e := element // copy the value
 	ts.elements = append(ts.elements, &e)
+	log.Printf("pushed %s %T@%p", e.t, e.tb, e.tb)
 }
 
 func (ts *tokenStack) push(t token, b *TemplateBuilder) {
-	ts.elements = append(ts.elements, &tokenElement{t, b})
+	ts.pushE(tokenElement{t, b})
 }
 
 func (ts *tokenStack) popE() *tokenElement {
@@ -202,6 +203,7 @@ func (ts *tokenStack) popE() *tokenElement {
 
 func (ts *tokenStack) pop() (token, TemplateBuilder) {
 	e := ts.popE()
+	log.Printf("popped %s %T@%p", e.t, e.tb, e.tb)
 	return e.t, *e.tb
 }
 
