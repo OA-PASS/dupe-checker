@@ -3,13 +3,14 @@ package query
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"text/template"
 )
 
 const (
-	Or QueryOp = iota
+	// Noop QueryOp means that there is a single query template with no associated boolean logic applied to it
+	Noop QueryOp = iota
+	Or
 	And
 )
 
@@ -60,6 +61,7 @@ type Builder interface {
 // Used to build a query plan for execution
 type PlanBuilder interface {
 	Builder
+	Plan
 
 	// Results should be boolean ORed
 	// If Or() is invoked consecutively, that represents a nested "or" in the config:
@@ -84,26 +86,14 @@ type PlanBuilder interface {
 	//    }
 	//
 	// If consecutive calls to Or() occur, a nested Plan will be created.
-	Or() TemplateBuilder
-
-	// Results of the supplied QueryTemplates should be boolean ANDed
-	//And() *TemplateBuilder
-
-	// Joins QueryTemplates.  Illegal to supply a QueryTemplate if Or or And has been invoked previously.
-	//With() *TemplateBuilder
-
-	// Initializes the PlanBuilder for the specified resource type
-	// Should only be invoked once for each type; i.e. one type, one Plan.
-	//ForResource(rdfType string) PlanBuilder
-
-	AddPlan(p Plan)
+	Or() PlanBuilder
 }
 
 type TemplateBuilder interface {
 	Builder
 	AddKey(key string) TemplateBuilder
 	AddQuery(query string) TemplateBuilder
-	AddPlan(p Plan) Plan
+	//AddPlan(p Plan) Plan
 }
 
 type Plan interface {
@@ -115,10 +105,6 @@ type Config interface {
 	QueryPlan(resourceType string) PlanBuilder
 }
 
-type Executor interface {
-	Execute(query string, handler func(result string) error) error
-}
-
 type tmplBuilderImpl struct {
 	built bool
 	keys  []string
@@ -128,6 +114,11 @@ type tmplBuilderImpl struct {
 func newTmplBuilder() tmplBuilderImpl {
 	return tmplBuilderImpl{}
 }
+
+func (tb *tmplBuilderImpl) Or() PlanBuilder {
+	panic("implement me")
+}
+
 func (tb *tmplBuilderImpl) ifBuilt(msg string, shouldPanic bool) error {
 	if tb.built {
 		if shouldPanic {
@@ -176,7 +167,7 @@ func (tb *tmplBuilderImpl) Build() (Plan, error) {
 }
 
 func (tb *tmplBuilderImpl) String() string {
-	return fmt.Sprintf("(%T) built: %t keys: '%s' q: '%s'\n", tb, tb.built, strings.Join(tb.keys, ","), tb.query)
+	return fmt.Sprintf("(%T@%p) built: %t keys: '%s' q: '%s'\n", tb, tb, tb.built, strings.Join(tb.keys, ","), tb.query)
 }
 
 func (tb *tmplBuilderImpl) Execute(handler func(result string) error) error {
@@ -184,101 +175,77 @@ func (tb *tmplBuilderImpl) Execute(handler func(result string) error) error {
 }
 
 type planBuilderImpl struct {
-	built            bool
-	subordinate      *planBuilderImpl
-	templateBuilders []*tmplBuilderImpl
+	built     bool
+	oper      QueryOp
+	children  []*planBuilderImpl
+	templates []*tmplBuilderImpl
+	active    *tmplBuilderImpl
 }
 
-func (pb planBuilderImpl) String() string {
+func (pb *planBuilderImpl) String() string {
 	return pb.string(&strings.Builder{}, "", "")
 }
 
-func (pb planBuilderImpl) string(sb *strings.Builder, leadIndent, indent string) string {
-	sb.WriteString(fmt.Sprintf("%s(%T) built: %t \n", leadIndent, pb, pb.built))
+func (pb *planBuilderImpl) string(sb *strings.Builder, leadIndent, indent string) string {
+	sb.WriteString(fmt.Sprintf("%s(%T@%p) oper: '%v' built: %t \n", leadIndent, pb, pb, pb.oper, pb.built))
 
-	if pb.subordinate != nil {
-		sb.WriteString(fmt.Sprintf("%s  subordinate: ", indent))
-		pb.subordinate.string(sb, "", indent+"  ")
-	} else {
-		sb.WriteString(fmt.Sprintf("%s  subordinate: nil\n", indent))
+	for _, v := range pb.children {
+		sb.WriteString(fmt.Sprintf("%s  child: %s", indent, v))
 	}
 
-	for _, v := range pb.templateBuilders {
-		sb.WriteString(fmt.Sprintf("%s  template: %s", indent, v))
+	for _, v := range pb.templates {
+		sb.WriteString(fmt.Sprintf("%s  template: %s", indent+"  ", v))
 	}
 
 	return sb.String()
 }
 
-func newPlanBuilder() planBuilderImpl {
-	return planBuilderImpl{}
+func newPlanBuilder() *planBuilderImpl {
+	return &planBuilderImpl{}
 }
 
-func (pb *planBuilderImpl) addSubordinatePlanBuilder() *planBuilderImpl {
-	if pb.subordinate != nil {
-		log.Fatalf("illegal state: this PlanBuilder already has as subordinate PlanBuilder for recursive operations")
-	}
-
-	pb.subordinate = &planBuilderImpl{}
-	return pb.subordinate
+func (pb *planBuilderImpl) addChildPlanBuilder(op QueryOp) *planBuilderImpl {
+	child := &planBuilderImpl{oper: op}
+	pb.children = append(pb.children, child)
+	return child
 }
 
-func (pb *planBuilderImpl) AddPlan(p Plan) {
-	//if pb.plans == nil {
-	//	pb.plans = []Plan{p}
-	//} else {
-	//	pb.plans = append(pb.plans, p)
-	//}
+func (pb *planBuilderImpl) addTemplateBuilder() *tmplBuilderImpl {
+	tb := newTmplBuilder()
+	pb.templates = append(pb.templates, &tb)
+	pb.active = &tb
+	return &tb
 }
 
-func (pb planBuilderImpl) Execute(handler func(result string) error) error {
+func (pb *planBuilderImpl) Execute(handler func(result string) error) error {
 	panic("implement me")
 }
 
+// Recursively builds child plans and query templates
 func (pb *planBuilderImpl) Build() (Plan, error) {
 	pb.built = true
 
-	if pb.subordinate != nil {
-		if _, err := pb.subordinate.Build(); err != nil {
-			log.Fatal(err)
+	for _, v := range pb.children {
+		if v.built {
+			continue
+		}
+		if _, err := v.Build(); err != nil {
+			panic(err)
+		}
+	}
+
+	for _, v := range pb.templates {
+		if v.built {
+			continue
+		}
+		if _, err := v.Build(); err != nil {
+			panic(err)
 		}
 	}
 
 	return pb, nil
 }
 
-func (pb *planBuilderImpl) Or() TemplateBuilder {
-	tmplBuilder := tmplBuilderImpl{}
-
-	if pb.subordinate == nil {
-		// first invocation of Or(), add the TemplateBuilder to *this* PlanBuilder
-		pb.templateBuilders = append(pb.templateBuilders, &tmplBuilder)
-		// add the subordinate PlanBuilder to handle a subsequent call to Or()
-		pb.addSubordinatePlanBuilder()
-	} else {
-		// otherwise Or() has been invoked at least once on this PlanBuilder, so we add and return a TemplateBuilder
-		// on the *subordinate* PlanBuilder
-		pb.subordinate.templateBuilders = append(pb.subordinate.templateBuilders, &tmplBuilder)
-	}
-
-	return &tmplBuilder
+func (pb *planBuilderImpl) Or() PlanBuilder {
+	return pb.addChildPlanBuilder(Or)
 }
-
-/*
-func (pb *planBuilderImpl) And() TemplateBuilder {
-	return nil
-	//return pb.addSubordinatePlanBuilder()
-}
-
-func (pb *planBuilderImpl) With() TemplateBuilder {
-	panic("implement me")
-}
-
-func (pb *planBuilderImpl) ForResource(rdfType string) PlanBuilder {
-	panic("implement me")
-}
-
-func (pb *planBuilderImpl) Execute(handler func(result string) error) error {
-	panic("implement me")
-}\
-*/

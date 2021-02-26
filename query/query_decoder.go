@@ -20,8 +20,8 @@ var (
 type token string
 
 type tokenElement struct {
-	t  token
-	tb *TemplateBuilder
+	t token
+	b *Builder
 }
 
 type tokenStack struct {
@@ -38,15 +38,11 @@ func (decoder) Decode(config string) map[string]Plan {
 	plans := make(map[string]Plan)
 	dec := json.NewDecoder(strings.NewReader(config))
 	stack := tokenStack{}
-	builder := newPlanBuilder()
 
-	var (
-		passType    string
-		tmplBuilder TemplateBuilder
-	)
+	var passTypeBuilder PlanBuilder
+	var passType string
 
 	for {
-
 		jsonToken, err := dec.Token()
 		if err == io.EOF {
 			break
@@ -60,118 +56,101 @@ func (decoder) Decode(config string) map[string]Plan {
 		switch jsonToken.(type) {
 		case json.Delim:
 			switch jsonToken.(json.Delim).String() {
-			case "{":
-				switch e := stack.peek(); e.t {
-				case orT:
-					// Verify stack element does not carry a builder at this point
-					if e.tb != nil {
-						panic(fmt.Sprintf("illegal state: token %s already has a %T: %p", orT, e.tb, e.tb))
-					}
-					// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
-					// active template being built
-					tmplBuilder = builder.Or()
-					log.Printf("created builder for token '%s': %T@%p", orT, tmplBuilder, tmplBuilder)
-					// Update the stack element
-					e.tb = &tmplBuilder
-				}
-			case "}":
+
+			case "{", "[":
+			case "}", "]":
 				if stack.size() > 0 {
-					switch popped := stack.popE(); popped.t {
+					switch t, b := stack.pop(); t {
 					case orT:
-						//if built, err := tmplBuilder.Build(); err != nil {
-						//	log.Fatal(err)
-						//} else {
-						//	builder.AddPlan(built)
-						//}
-					case qT:
-						// TODO
-					case queryT:
-						if p, err := builder.Build(); err != nil {
-							panic(err)
+						// close the active query template, and clear the active state of the parent builder
+						if p, e := (b).(*planBuilderImpl).active.Build(); e != nil {
+							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 						} else {
-							plans[passType] = p
+							(b).(*planBuilderImpl).active = nil
 						}
-					default:
-						// TODO
-						panic(fmt.Sprintf("unhandled popped token %v", popped))
+					case queryT:
+						if p, e := b.Build(); e != nil {
+							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+						}
 					}
-				}
-
-				// We are ending the first object in this array of "or" objects
-				// (we just popped the first 'q' token)
-				//   "or": [
-				//        {
-				//          "keys": [
-				//            "nlmta"
-				//          ],
-				//          "q": "es query for nlmta"
-				//        },
-				//        {
-				//          "keys": [
-				//            "journalName",
-				//            "issn"
-				//          ],
-				//          "q": "es query for journalName and issn"
-				//        }
-				//      ]
-				if stack.peek().t == orT || stack.peek().t == andT {
-					log.Printf("building builder for token '%s': %T@%p", stack.peek().t, tmplBuilder, tmplBuilder)
-					if built, err := tmplBuilder.Build(); err != nil {
-						panic(err)
-					} else {
-						builder.AddPlan(built)
+				} else {
+					if p, e := passTypeBuilder.Build(); e != nil {
+						panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 					}
-				}
-			case "]":
-				_ = stack.popE()
-				//switch popped {
-				//case orT:
-				//	if built, err := tmplBuilder.Build(); err != nil {
-				//		panic(err)
-				//	} else {
-				//		builder.AddPlan(built)
-				//	}
-				//}
-			case "[":
-				switch e := stack.peek(); e.t {
-				case orT:
-					// Verify stack element does not carry a builder at this point
-					if e.tb != nil {
-						panic(fmt.Sprintf("illegal state: token %s already has a %T: %p", orT, e.tb, e.tb))
-					}
-
-					// create a new TemplateBuilder, add it to the PlanBuilder, and set the state as the
-					// active template being built
-					tmplBuilder = builder.Or()
-					log.Printf("created builder for token '%s': %T@%p", orT, tmplBuilder, tmplBuilder)
-					// Update the stack element
-					e.tb = &tmplBuilder
 				}
 			}
 		case string:
 			switch t := token(jsonToken.(string)); t {
-			case queryT, orT, andT, keysT, qT:
+			case queryT:
+				var tb Builder
+				if b := stack.latestBuilder(); b == nil {
+					tb = passTypeBuilder.(*planBuilderImpl).addTemplateBuilder()
+				} else {
+					tb = b.(*planBuilderImpl).addTemplateBuilder()
+				}
+				stack.push(queryT, &tb)
+			case orT:
+				var pb PlanBuilder
+				var b Builder
+				// If we encounter an operation token (or, and), *and* our last token added to the stack was an 'or',
+				// or 'and', then we need to build and attach a PlanBuilder for handling *this* 'or's operations to the
+				// previous 'or's plan builder (in the case of a nested operation), or the root PlanBuilder.
+				switch e := stack.peek(); e.t {
+				case orT:
+					pb = (*e.b).(PlanBuilder).Or()
+				default:
+					pb = passTypeBuilder.Or()
+				}
+				b = pb
+				log.Printf("created plan for token '%s': %T@%p", orT, b, &b)
+				stack.push(t, &b)
+
+			// We are inside a query template object.  The object may or may not have been created depending on the order
+			// the tokens were encountered.
+			case keysT, qT:
+				switch stack.latestBuilder().(type) {
+				case *planBuilderImpl:
+					// If we are seeing 'keys' or 'q' for the first time, and the latest builder is a plan builder,
+					// we need to add a template builder to the plan.
+					if stack.latestBuilder().(*planBuilderImpl).active == nil {
+						stack.latestBuilder().(*planBuilderImpl).addTemplateBuilder()
+					}
+				}
 				stack.push(t, nil)
 			default:
 				if stack.size() > 0 {
-					if tmplBuilder == nil {
-						panic("no template builder present (has PlanBuilder().Or() or PlanBuilder.And() been invoked and stored?)")
-					}
-					log.Printf("Have a value for '%s': %v", stack.peek().t, jsonToken)
+					// TODO recurse up the stack and get the most recent template builder (?)
+					log.Printf("Have a value for '%s': '%v'", stack.peek().t, jsonToken)
+
 					// add the key or query to the TemplateBuilder
 					switch e := stack.peek(); e.t {
 					case keysT:
-						tmplBuilder.AddKey(jsonToken.(string))
+						switch stack.latestBuilder().(type) {
+						case *planBuilderImpl:
+							stack.latestBuilder().(*planBuilderImpl).active.AddKey(jsonToken.(string))
+						case *tmplBuilderImpl:
+							stack.latestBuilder().(*tmplBuilderImpl).AddKey(jsonToken.(string))
+						}
 					case qT:
-						tmplBuilder.AddQuery(jsonToken.(string))
+						switch stack.latestBuilder().(type) {
+						case *planBuilderImpl:
+							stack.latestBuilder().(*planBuilderImpl).active.AddQuery(jsonToken.(string))
+						case *tmplBuilderImpl:
+							stack.latestBuilder().(*tmplBuilderImpl).AddQuery(jsonToken.(string))
+						}
 					default:
 						panic(fmt.Sprintf("Unknown token %v in 'query' object", jsonToken))
 					}
 				} else {
 					// have a top level key representing a PASS type
-					log.Printf("Have a PASS type: %v", jsonToken)
 					passType = jsonToken.(string)
-					//_ = builder.ForResource(t.(string))
+					passTypeBuilder = newPlanBuilder()
+					log.Printf("Have a PASS type: %v", passType)
+					if p, exists := plans[passType]; exists {
+						panic(fmt.Sprintf("illegal state: %T@%s already exists for type '%s'", p, p, passType))
+					} else {
+						plans[passType] = passTypeBuilder
+					}
 				}
 			}
 		}
@@ -185,33 +164,52 @@ func (decoder) Decode(config string) map[string]Plan {
 func (ts *tokenStack) pushE(element tokenElement) {
 	e := element // copy the value
 	ts.elements = append(ts.elements, &e)
-	log.Printf("pushed %s %T@%p", e.t, e.tb, e.tb)
+	log.Printf("pushed '%s' '%T@%p'", e.t, e.b, e.b)
 }
 
-func (ts *tokenStack) push(t token, b *TemplateBuilder) {
+func (ts *tokenStack) push(t token, b *Builder) {
 	ts.pushE(tokenElement{t, b})
 }
 
-func (ts *tokenStack) popE() *tokenElement {
+func (ts *tokenStack) popE() tokenElement {
 	if ts.size() == 0 {
 		panic("cannot pop an empty stack")
 	}
 	popped := ts.elements[len(ts.elements)-1]
 	ts.elements = ts.elements[0 : len(ts.elements)-1]
-	return popped
+	log.Printf("popped '%s' '%T@%p'", popped.t, popped.b, popped.b)
+	return *popped
 }
 
-func (ts *tokenStack) pop() (token, TemplateBuilder) {
+func (ts *tokenStack) pop() (token, Builder) {
 	e := ts.popE()
-	log.Printf("popped %s %T@%p", e.t, e.tb, e.tb)
-	return e.t, *e.tb
+	if e.b == nil {
+		return e.t, nil
+	}
+
+	return e.t, *e.b
 }
 
-func (ts *tokenStack) peek() tokenElement {
+func (ts *tokenStack) peek() *tokenElement {
 	if ts.size() == 0 {
-		return tokenElement{nilT, nil}
+		return &tokenElement{nilT, nil}
 	}
-	return *ts.elements[len(ts.elements)-1]
+	return ts.elements[len(ts.elements)-1]
+}
+
+func (ts *tokenStack) latestBuilder() Builder {
+	if ts.size() == 0 {
+		return nil
+	}
+
+	for i := range ts.elements {
+		e := ts.elements[len(ts.elements)-i-1]
+		if e.b != nil {
+			return *e.b
+		}
+	}
+
+	return nil
 }
 
 func (ts *tokenStack) size() int {

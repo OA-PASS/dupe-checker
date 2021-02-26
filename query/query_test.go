@@ -21,6 +21,19 @@ var queryConfigSimpleOrObj string
 //go:embed queryconfig-nested-or.json
 var queryConfigNestedOr string
 
+//go:embed queryconfig-simple.json
+var queryConfigSimple string
+
+func Test_DecodeSimple(t *testing.T) {
+	plans := decoder{}.Decode(queryConfigSimple)
+
+	assert.NotNil(t, plans)
+	assert.True(t, len(plans) > 0)
+	assert.NotNil(t, plans["http://oapass.org/ns/pass#Journal"])
+
+	verifyPlans(t, plans, 1, 1)
+}
+
 func Test_DecodeSimpleOrObject(t *testing.T) {
 	plans := decoder{}.Decode(queryConfigSimpleOrObj)
 
@@ -57,9 +70,9 @@ func verifyPlans(t *testing.T, plans map[string]Plan, expectedBuiltCount, expect
 		log.Printf("Plan for type %s:\n%s", k, v)
 		if v, ok := v.(*planBuilderImpl); ok {
 			assert.True(t, v.built)
-			for sub := v.subordinate; sub != nil; {
-				if sub.built {
-					for _, tmplBuilder := range sub.templateBuilders {
+			for _, child := range v.children {
+				if child.built {
+					for _, tmplBuilder := range child.templates {
 						actualTotalCount++
 						if tmplBuilder.built {
 							actualBuiltCount++
@@ -71,11 +84,9 @@ func verifyPlans(t *testing.T, plans map[string]Plan, expectedBuiltCount, expect
 						}
 					}
 				}
-
-				sub = sub.subordinate
 			}
 
-			for _, tmplBuilder := range v.templateBuilders {
+			for _, tmplBuilder := range v.templates {
 				actualTotalCount++
 				if tmplBuilder.built {
 					actualBuiltCount++
