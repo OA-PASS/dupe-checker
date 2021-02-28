@@ -63,19 +63,30 @@ func (decoder) Decode(config string) map[string]Plan {
 					switch t, b := stack.pop(); t {
 					case orT:
 						// close the active query template, and clear the active state of the parent builder
-						if p, e := (b).(*planBuilderImpl).active.Build(); e != nil {
+						//if p, e := (b).(*planBuilderImpl).active.Build(); e != nil {
+						//	panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+						//} else {
+						//	log.Printf("built %T@%p", (b).(*planBuilderImpl).active, (b).(*planBuilderImpl).active)
+						//	(b).(*planBuilderImpl).active = nil
+						//}
+						if p, e := b.Build(); e != nil {
 							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 						} else {
-							(b).(*planBuilderImpl).active = nil
+							log.Printf("built %T@%p", p, p)
 						}
 					case queryT:
 						if p, e := b.Build(); e != nil {
 							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+						} else {
+							log.Printf("built %T@%p", p, p)
 						}
+
 					}
 				} else {
 					if p, e := passTypeBuilder.Build(); e != nil {
 						panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+					} else {
+						log.Printf("built %T@%p", p, p)
 					}
 				}
 			}

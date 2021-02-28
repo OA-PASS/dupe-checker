@@ -98,11 +98,20 @@ type TemplateBuilder interface {
 
 type Plan interface {
 	Execute(handler func(result string) error) error
+	Children() []Plan
 }
 
 type Config interface {
 	Types() []string
 	QueryPlan(resourceType string) PlanBuilder
+}
+
+type planBuilderImpl struct {
+	built     bool
+	oper      QueryOp
+	children  []*planBuilderImpl
+	templates []*tmplBuilderImpl
+	active    *tmplBuilderImpl
 }
 
 type tmplBuilderImpl struct {
@@ -113,6 +122,22 @@ type tmplBuilderImpl struct {
 
 func newTmplBuilder() tmplBuilderImpl {
 	return tmplBuilderImpl{}
+}
+
+func (pb *planBuilderImpl) Children() []Plan {
+	children := make([]Plan, len(pb.children)+len(pb.templates))
+	for i := range pb.children {
+		children[i] = pb.children[i]
+	}
+	for i := range pb.templates {
+		children[len(pb.children)+i] = pb.templates[i]
+	}
+	return children
+}
+
+func (tb *tmplBuilderImpl) Children() []Plan {
+	// query templates don't have children
+	return []Plan{}
 }
 
 func (tb *tmplBuilderImpl) Or() PlanBuilder {
@@ -172,14 +197,6 @@ func (tb *tmplBuilderImpl) String() string {
 
 func (tb *tmplBuilderImpl) Execute(handler func(result string) error) error {
 	panic("implement me")
-}
-
-type planBuilderImpl struct {
-	built     bool
-	oper      QueryOp
-	children  []*planBuilderImpl
-	templates []*tmplBuilderImpl
-	active    *tmplBuilderImpl
 }
 
 func (pb *planBuilderImpl) String() string {

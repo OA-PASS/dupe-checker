@@ -24,6 +24,57 @@ var queryConfigNestedOr string
 //go:embed queryconfig-simple.json
 var queryConfigSimple string
 
+func Test_PlanBuilderImplChildrenReturnsTemplates(t *testing.T) {
+
+}
+
+// insures that the Children() method of planBuilderImpl properly recurses child plans, including templates
+func Test_PlanBuilderImplChildren(t *testing.T) {
+	grandTemplates := []*tmplBuilderImpl{&tmplBuilderImpl{}}
+	grandchild := planBuilderImpl{templates: grandTemplates}
+	grandchildren := []*planBuilderImpl{&grandchild}
+
+	childTemplates := []*tmplBuilderImpl{&tmplBuilderImpl{}}
+	child := planBuilderImpl{templates: childTemplates, children: grandchildren}
+	children := []*planBuilderImpl{&child}
+
+	parentTemplates := []*tmplBuilderImpl{&tmplBuilderImpl{}}
+	parent := planBuilderImpl{templates: parentTemplates, children: children}
+
+	// recursing parent.Children() should return
+	//   - parent template
+	//   - child plan
+	//   - child template
+	//   - grandchild plan
+	//   - grandchild template
+	//assert.Equal(t, 5, recursiveCounter(&parent, 0))
+	count := 0
+	recursiveVerifier("", &parent, func(planType string, p Plan) {
+		count++
+	})
+	assert.Equal(t, 5, count, &parent)
+}
+
+func recursiveCounter(p Plan, count int) int {
+	count += len(p.Children())
+	for _, c := range p.Children() {
+		return recursiveCounter(c, count)
+	}
+	return count
+}
+
+// verifies the state of the plan
+type planVerifier func(planType string, p Plan)
+
+// executes the planVerifier on the given plan and recursively on all its descendents
+func recursiveVerifier(planType string, p Plan, pv planVerifier) {
+	pv(planType, p)
+
+	for _, child := range p.Children() {
+		recursiveVerifier(planType, child, pv)
+	}
+}
+
 func Test_DecodeSimple(t *testing.T) {
 	plans := decoder{}.Decode(queryConfigSimple)
 
@@ -31,17 +82,42 @@ func Test_DecodeSimple(t *testing.T) {
 	assert.True(t, len(plans) > 0)
 	assert.NotNil(t, plans["http://oapass.org/ns/pass#Journal"])
 
-	verifyPlans(t, plans, 1, 1)
+	expectedTotalPlanCount := 1 // just the root plan, which should be built.
+	expectedTotalTemplateCount := 1
+	expectedBuiltCount := expectedTotalPlanCount + expectedTotalTemplateCount
+
+	actualBuiltCount, actualTotalPlanCount, actualTotalTemplateCount := 0, 0, 0
+	recursiveVerifier("http://oapass.org/ns/pass#Journal", plans["http://oapass.org/ns/pass#Journal"],
+		func(planType string, p Plan) {
+			assert.Equal(t, "http://oapass.org/ns/pass#Journal", planType)
+			switch p.(type) {
+			case *tmplBuilderImpl:
+				tmplBuilder := p.(*tmplBuilderImpl)
+				assert.True(t, tmplBuilder.built)
+				assert.EqualValues(t, []string{"nlmta"}, tmplBuilder.keys)
+				assert.Equal(t, "es query for nlmta", tmplBuilder.query)
+				actualTotalTemplateCount++
+			case *planBuilderImpl:
+				assert.True(t, p.(*planBuilderImpl).built)
+				actualTotalPlanCount++
+			}
+			actualBuiltCount++
+		})
+
+	assert.Equal(t, expectedBuiltCount, actualBuiltCount)
+	assert.Equal(t, actualTotalTemplateCount, expectedTotalTemplateCount)
+	assert.Equal(t, actualTotalPlanCount, expectedTotalPlanCount)
 }
 
-func Test_DecodeSimpleOrObject(t *testing.T) {
-	plans := decoder{}.Decode(queryConfigSimpleOrObj)
-
-	assert.NotNil(t, plans)
-	assert.True(t, len(plans) > 0)
-
-	verifyPlans(t, plans, 1, 1)
-}
+// This JSON is pathological and not allowed
+//func Test_DecodeSimpleOrObject(t *testing.T) {
+//	plans := decoder{}.Decode(queryConfigSimpleOrObj)
+//
+//	assert.NotNil(t, plans)
+//	assert.True(t, len(plans) > 0)
+//
+//	verifyPlans(t, plans, 1, 1)
+//}
 
 func Test_DecodeSimpleOrArray(t *testing.T) {
 	plans := decoder{}.Decode(queryConfigSimpleOrArray)
@@ -49,7 +125,9 @@ func Test_DecodeSimpleOrArray(t *testing.T) {
 	assert.NotNil(t, plans)
 	assert.Equal(t, 1, len(plans))
 
-	verifyPlans(t, plans, 2, 3)
+	expectedTotalPlanCount := 2 // the root plan and the or plan; all should be built.
+	expectedBuiltCount := expectedTotalPlanCount
+	verifyPlans(t, plans, expectedBuiltCount, expectedTotalPlanCount)
 }
 
 func Test_DecodeNestedOrArray(t *testing.T) {
@@ -58,7 +136,9 @@ func Test_DecodeNestedOrArray(t *testing.T) {
 	assert.NotNil(t, plans)
 	assert.Equal(t, 1, len(plans))
 
-	verifyPlans(t, plans, 3, 4)
+	expectedTotalPlanCount := 6 // the root plan, two child or plans (one as a child of the other), three templates.
+	expectedBuiltCount := expectedTotalPlanCount
+	verifyPlans(t, plans, expectedBuiltCount, expectedTotalPlanCount)
 
 }
 
@@ -66,40 +146,29 @@ func verifyPlans(t *testing.T, plans map[string]Plan, expectedBuiltCount, expect
 	actualTotalCount := 0
 	actualBuiltCount := 0
 
-	for k, v := range plans {
-		log.Printf("Plan for type %s:\n%s", k, v)
-		if v, ok := v.(*planBuilderImpl); ok {
-			assert.True(t, v.built)
-			for _, child := range v.children {
-				if child.built {
-					for _, tmplBuilder := range child.templates {
-						actualTotalCount++
-						if tmplBuilder.built {
-							actualBuiltCount++
-							assert.NotZero(t, tmplBuilder.query)
-							assert.NotZero(t, tmplBuilder.keys)
-							for _, v := range tmplBuilder.keys {
-								assert.NotZero(t, v)
-							}
-						}
-					}
+	for planType, plan := range plans {
+		log.Printf("Plan for type %s:\n%s", planType, plan)
+		recursiveVerifier(planType, plan, func(planType string, plan Plan) {
+			actualTotalCount++
+			switch plan.(type) {
+			case *tmplBuilderImpl:
+				tmplBuilder := plan.(*tmplBuilderImpl)
+				assert.True(t, tmplBuilder.built)
+				actualBuiltCount++
+				assert.NotZero(t, tmplBuilder.query)
+				assert.NotZero(t, tmplBuilder.keys)
+				for _, v := range tmplBuilder.keys {
+					assert.NotZero(t, v)
 				}
+				//actualTotalTemplateCount++
+			case *planBuilderImpl:
+				assert.True(t, plan.(*planBuilderImpl).built)
+				actualBuiltCount++
+				//actualTotalPlanCount++
 			}
 
-			for _, tmplBuilder := range v.templates {
-				actualTotalCount++
-				if tmplBuilder.built {
-					actualBuiltCount++
-					assert.NotZero(t, tmplBuilder.query)
-					assert.NotZero(t, tmplBuilder.keys)
-					for _, v := range tmplBuilder.keys {
-						assert.NotZero(t, v)
-					}
-				}
-			}
-		} else {
-			assert.True(t, ok, "plan not an instance of *planBuilderImpl, was %T", v)
-		}
+		})
+
 	}
 	assert.Equal(t, expectedBuiltCount, actualBuiltCount)
 	assert.Equal(t, expectedTotalCount, actualTotalCount)

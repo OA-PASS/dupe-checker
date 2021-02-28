@@ -4,16 +4,20 @@
       {
         "or": [
           {
-            "keys": [
-              "doi"
-            ],
-            "q": "es query for doi"
+            "query": {
+              "keys": [
+                "doi"
+              ],
+              "q": "es query for doi"
+            }
           },
           {
-            "keys": [
-              "pmid"
-            ],
-            "q": "es query for pmid"
+            "query": {
+              "keys": [
+                "pmid"
+              ],
+              "q": "es query for pmid"
+            }
           }
         ]
       },

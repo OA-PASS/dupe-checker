@@ -2,17 +2,21 @@
   "http://oapass.org/ns/pass#Journal": {
     "or": [
       {
-        "keys": [
-          "nlmta"
-        ],
-        "q": "es query for nlmta"
+        "query": {
+          "keys": [
+            "nlmta"
+          ],
+          "q": "es query for nlmta"
+        }
       },
       {
-        "keys": [
-          "journalName",
-          "issn"
-        ],
-        "q": "es query for journalName and issn"
+        "query": {
+          "keys": [
+            "journalName",
+            "issn"
+          ],
+          "q": "es query for journalName and issn"
+        }
       }
     ]
   }
