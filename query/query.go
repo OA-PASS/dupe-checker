@@ -206,12 +206,13 @@ func (pb *planBuilderImpl) String() string {
 func (pb *planBuilderImpl) string(sb *strings.Builder, leadIndent, indent string) string {
 	sb.WriteString(fmt.Sprintf("%s(%T@%p) oper: '%v' built: %t \n", leadIndent, pb, pb, pb.oper, pb.built))
 
-	for _, v := range pb.children {
-		sb.WriteString(fmt.Sprintf("%s  child: %s", indent, v))
+	for _, v := range pb.templates {
+		sb.WriteString(fmt.Sprintf("%s  template: %s", leadIndent+indent, v))
 	}
 
-	for _, v := range pb.templates {
-		sb.WriteString(fmt.Sprintf("%s  template: %s", indent+"  ", v))
+	for _, v := range pb.children {
+		childStr := v.string(&strings.Builder{}, leadIndent, indent+"  ")
+		sb.WriteString(fmt.Sprintf("%s  child: %s", leadIndent+indent, childStr))
 	}
 
 	return sb.String()

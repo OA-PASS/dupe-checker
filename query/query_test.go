@@ -41,18 +41,24 @@ func Test_PlanBuilderImplChildren(t *testing.T) {
 	parentTemplates := []*tmplBuilderImpl{&tmplBuilderImpl{}}
 	parent := planBuilderImpl{templates: parentTemplates, children: children}
 
+	// parent.Children() should return the immediate child plans and templates.
+	assert.Equal(t, 2, len(parent.Children()))
+	assert.Equal(t, 2, len(child.Children()))
+	assert.Equal(t, 1, len(grandchild.Children()))
+
 	// recursing parent.Children() should return
 	//   - parent template
 	//   - child plan
 	//   - child template
 	//   - grandchild plan
 	//   - grandchild template
-	//assert.Equal(t, 5, recursiveCounter(&parent, 0))
 	count := 0
+	// note that the recursive verifier invokes the provided function on the supplied plan, so the parent itself is
+	// counted.
 	recursiveVerifier("", &parent, func(planType string, p Plan) {
 		count++
 	})
-	assert.Equal(t, 5, count, &parent)
+	assert.Equal(t, 6, count, &parent)
 }
 
 func recursiveCounter(p Plan, count int) int {
@@ -125,7 +131,7 @@ func Test_DecodeSimpleOrArray(t *testing.T) {
 	assert.NotNil(t, plans)
 	assert.Equal(t, 1, len(plans))
 
-	expectedTotalPlanCount := 2 // the root plan and the or plan; all should be built.
+	expectedTotalPlanCount := 4 // the root plan and the or plan, and the two queries; all should be built.
 	expectedBuiltCount := expectedTotalPlanCount
 	verifyPlans(t, plans, expectedBuiltCount, expectedTotalPlanCount)
 }
