@@ -2,7 +2,7 @@ package query
 
 import (
 	"dupe-checker/model"
-	"text/template"
+	"net/http"
 )
 
 const (
@@ -12,28 +12,11 @@ const (
 	And
 )
 
+type ElasticSearchClient struct {
+	http http.Client
+}
+
 type QueryOp int
-
-// Associates a named key with a value; used when evaluating the template
-type KvPair struct {
-	key, value string
-}
-
-// Encapsulates an ES query and the keys it requires for evaluation
-type Template struct {
-	Template template.Template
-	Keys     []string
-}
-
-// Parameterizes the template with supplied key-value pairs and returns the query, ready to be executed
-func (qt Template) Eval(kvp []KvPair) (string, error) {
-	return "", nil
-}
-
-// Template is also a Plan.
-func (qt Template) Execute(handler func(result string) error) error {
-	return nil
-}
 
 // Encapsulates an array of query templates, with an operator indicating how their results should be evaluated after the
 // queries are executed.

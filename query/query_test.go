@@ -1,11 +1,18 @@
 package query
 
 import (
+	"bytes"
+	"dupe-checker/model"
 	_ "embed"
+	"fmt"
+	"github.com/knakk/rdf"
 	"github.com/stretchr/testify/assert"
 	"github.com/yourbasic/graph"
 	"github.com/yourbasic/graph/build"
+	"html/template"
 	"log"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -23,6 +30,12 @@ var queryConfigNestedOr string
 
 //go:embed queryconfig-simple.json
 var queryConfigSimple string
+
+//go:embed pass-journal.n3
+var passJournal string
+
+//go:embed pass-publication.n3
+var passPublication string
 
 func Test_PlanBuilderImplChildrenReturnsTemplates(t *testing.T) {
 
@@ -178,6 +191,144 @@ func verifyPlans(t *testing.T, plans map[string]Plan, expectedBuiltCount, expect
 	}
 	assert.Equal(t, expectedBuiltCount, actualBuiltCount)
 	assert.Equal(t, expectedTotalCount, actualTotalCount)
+}
+
+func Test_Template(t *testing.T) {
+	// scheme, host and port, index, type, values
+	// http, elasticsearch:9200, pass, type, doi
+	// http://elasticsearch:9200/pass?q=@type:<type>+doi:<doi>&default_operator=AND
+	fmtStr := "%s://%s/%s?q=@type:%s+doi:%s&default_operator=AND"
+	templateStr := "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}?q=@type:{{.Type}}+doi:{{.Doi}}&default_operator=AND"
+
+	tmpl, err := template.New("test").Parse(templateStr)
+	assert.Nil(t, err)
+	assert.NotNil(t, tmpl)
+
+	buf := &bytes.Buffer{}
+
+	err = tmpl.Execute(buf, struct {
+		Scheme      string
+		HostAndPort string
+		Index       string
+		Type        string
+		Doi         string
+	}{"http", "elasticsearch:9200", "pass", "Submission", "10.1.2.4/567"})
+
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf(fmtStr, "http", "elasticsearch:9200", "pass", "Submission", "10.1.2.4/567"), buf.String())
+}
+
+func Test_TemplateRange(t *testing.T) {
+	kvps := []KvPair{{"@type", "Submission"}, {"doi", "10.1.2.4/567"}}
+
+	funcMap := template.FuncMap{
+		// The name "inc" is what the function will be called in the template text.
+		"inc": func(i int) int {
+			return i + 1
+		},
+		"dec": func(i int) int {
+			return i - 1
+		},
+	}
+
+	// scheme, host and port, index, type, values
+	// http, elasticsearch:9200, pass, type, doi
+	// http://elasticsearch:9200/pass?q=@type:<type>+doi:<doi>&default_operator=AND
+	fmtStr := "%s://%s/%s?q=@type:%s+doi:%s&default_operator=AND"
+	//templateStr := "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}?q=@type:{{.Type}}+doi:{{.Doi}}&default_operator=AND"
+
+	templateStr := "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{$e.Value}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+
+	tmpl, err := template.New("test").Funcs(funcMap).Parse(templateStr)
+	assert.Nil(t, err)
+	assert.NotNil(t, tmpl)
+
+	buf := &bytes.Buffer{}
+
+	err = tmpl.Execute(buf, struct {
+		Scheme      string
+		HostAndPort string
+		Index       string
+		KvPairs     []KvPair
+	}{"http", "elasticsearch:9200", "pass", kvps})
+
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf(fmtStr, "http", "elasticsearch:9200", "pass", "Submission", "10.1.2.4/567"), buf.String())
+
+}
+
+func TestTemplate_BuildAndEval(t *testing.T) {
+
+	// normally templateStr and tmplBuilderImpl would be created by parsing the query json config
+	// Scheme, HostAndPort, Index must come from env or on construction
+	templateStr := "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{$e.Value}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+	tmplBuilder := tmplBuilderImpl{
+		built: false,
+		keys:  []string{"@type", "doi"},
+		query: templateStr,
+	}
+
+	plan, err := tmplBuilder.Build()
+
+	assert.Nil(t, err)
+	assert.IsType(t, Template{}, plan)
+
+	tmpl := plan.(Template)
+	esQuery, err := tmpl.eval([]KvPair{{"@type", "Submission"}, {"doi", "10.1.2.4/567"}})
+
+	assert.Nil(t, err)
+	assert.Equal(t, "http://elasticsearch:9200/pass?q=@type:Submission+doi:10.1.2.4/567&default_operator=AND", esQuery)
+}
+
+func TestTemplate_ExtractKeys(t *testing.T) {
+	container, err := model.NewContainerFromReader(strings.NewReader(passJournal), rdf.NTriples)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(container.PassProperties()))
+
+	kvp := extractKeys(container, []string{"journalName", "issn"})
+	assert.Equal(t, 3, len(kvp))
+
+	assert.Equal(t, "journalName", kvp[0].Key)
+	assert.Equal(t, "Community dentistry and oral epidemiology", kvp[0].Value)
+	assert.Equal(t, "issn", kvp[1].Key)
+	assert.Equal(t, "Online:1600-0528", kvp[1].Value)
+	assert.Equal(t, "issn", kvp[2].Key)
+	assert.Equal(t, "Print:0301-5661", kvp[2].Value)
+}
+
+func TestTemplate_Execute(t *testing.T) {
+	// Normally the container is provided by the repository visitor but here we read it off of the filesystem.
+	container, err := model.NewContainerFromReader(strings.NewReader(passPublication), rdf.NTriples)
+	assert.Nil(t, err)
+	assert.Equal(t, 5, len(container.PassProperties()))
+
+	// normally templateStr and tmplBuilderImpl would be created by parsing the query json config
+	// Scheme, HostAndPort, Index must come from env or on construction
+	// DOIs need to be quoted!!!
+	templateStr := "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+	tmplBuilder := tmplBuilderImpl{
+		built: false,
+		keys:  []string{"@type", "doi"},
+		query: templateStr,
+	}
+
+	plan, err := tmplBuilder.Build()
+	assert.IsType(t, Template{}, plan)
+
+	tmpl := plan.(Template)
+
+	processedResult := false
+	err = tmpl.Execute(container, func(result string) error {
+		atoi, err := strconv.Atoi(result)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, atoi)
+		processedResult = true
+		return nil
+	})
+
+	assert.Nil(t, err)
+	assert.True(t, processedResult)
+
 }
 
 /*

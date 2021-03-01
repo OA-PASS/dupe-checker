@@ -1,0 +1,16 @@
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://fedora.info/definitions/v4/repository#Container> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://fedora.info/definitions/v4/repository#Resource> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oapass.org/ns/pass#Journal> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://fedora.info/definitions/v4/repository#lastModifiedBy> "fedoraAdmin"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://oapass.org/ns/pass#nlmta> "Community Dent Oral Epidemiol"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://fedora.info/definitions/v4/repository#created> "2018-05-11T05:03:59.474Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://dataconservancy.org/ns/jsonld#hasContext> <https://oa-pass.github.io/pass-data-model/src/main/resources/context-3.2.jsonld> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://oapass.org/ns/pass#journalName> "Community dentistry and oral epidemiology"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://oapass.org/ns/pass#issn> "Online:1600-0528"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://oapass.org/ns/pass#issn> "Print:0301-5661"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://fedora.info/definitions/v4/repository#lastModified> "2019-04-08T18:28:18.631Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://fedora.info/definitions/v4/repository#createdBy> "fedoraAdmin"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/ldp#RDFSource> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/ldp#Container> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://fedora.info/definitions/v4/repository#writable> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+<http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f> <http://fedora.info/definitions/v4/repository#hasParent> <http://fcrepo:8080/fcrepo/rest/journals> .

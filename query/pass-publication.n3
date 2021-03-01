@@ -1,0 +1,17 @@
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://fedora.info/definitions/v4/repository#Container> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://fedora.info/definitions/v4/repository#Resource> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oapass.org/ns/pass#Publication> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://oapass.org/ns/pass#pmid> "29489655"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://oapass.org/ns/pass#title> "Genome-wide association study of maternal genetic effects and parent-of-origin effects on food allergy."^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://fedora.info/definitions/v4/repository#created> "2018-06-01T22:18:41.173Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://oapass.org/ns/pass#doi> "10.1097/MD.0000000000010043"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://oapass.org/ns/pass#volume> "97"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://dataconservancy.org/ns/jsonld#hasContext> <https://oa-pass.github.io/pass-data-model/src/main/resources/context-2.2.jsonld> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://fedora.info/definitions/v4/repository#lastModified> "2018-06-01T22:18:41.173Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://oapass.org/ns/pass#issue> "9"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://fedora.info/definitions/v4/repository#lastModifiedBy> "fedoraAdmin"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://fedora.info/definitions/v4/repository#createdBy> "fedoraAdmin"^^<http://www.w3.org/2001/XMLSchema#string> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/ldp#RDFSource> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/ldp#Container> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://fedora.info/definitions/v4/repository#writable> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+<http://fcrepo:8080/fcrepo/rest/publications/01/60/2e/65/01602e65-f8bb-49d6-97e0-b810c618f982> <http://fedora.info/definitions/v4/repository#hasParent> <http://fcrepo:8080/fcrepo/rest/publications> .
