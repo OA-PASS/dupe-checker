@@ -7,10 +7,30 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"text/template"
 )
+
+var ErrMissingRequiredKey = errors.New("query: missing required key(s)")
+
+type Error struct {
+	wrapped error
+	context string
+}
+
+func (e Error) Unwrap() error {
+	if e.wrapped != nil {
+		return e.wrapped
+	}
+
+	return nil
+}
+
+func (e Error) Error() string {
+	return fmt.Sprintf("%s: %s", e.wrapped.Error(), e.context)
+}
 
 var templateFuncs = template.FuncMap{
 	// The name "inc" is what the function will be called in the template text.
@@ -140,9 +160,7 @@ func (qt Template) eval(kvp []KvPair) (string, error) {
 	}
 }
 
-var ErrMissingKey = errors.New("missing required key(s) for query")
-
-func extractKeys(container model.LdpContainer, keys []string) []KvPair {
+func extractKeys(container model.LdpContainer, keys []string) ([]KvPair, error) {
 	extractedKvps := make(map[string][]KvPair)
 
 	for propKey, propVal := range container.PassProperties() {
@@ -151,13 +169,13 @@ func extractKeys(container model.LdpContainer, keys []string) []KvPair {
 				continue
 			} else {
 				for _, value := range propVal {
-					if pairs, ok := extractedKvps[key]; ok {
-						pairs = append(pairs, KvPair{key, value})
+					if pairs, exists := extractedKvps[key]; exists {
+						extractedKvps[key] = append(pairs, KvPair{key, value})
+
 					} else {
 						extractedKvps[key] = []KvPair{{key, value}}
 					}
 				}
-				break
 			}
 		}
 	}
@@ -183,7 +201,7 @@ func extractKeys(container model.LdpContainer, keys []string) []KvPair {
 	}
 
 	if len(missing) > 0 {
-		panic(fmt.Errorf("missing required key(s) for query: %s", strings.Join(missing, ",")))
+		return nil, Error{ErrMissingRequiredKey, strings.Join(missing, ",")}
 	}
 
 	var result []KvPair
@@ -194,7 +212,7 @@ func extractKeys(container model.LdpContainer, keys []string) []KvPair {
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 // Executes the provided ES query string and returns the number of hits.
@@ -261,7 +279,16 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 	// eval(...) the query
 	// perform the query
 
-	if query, err := qt.eval(extractKeys(container, qt.Keys)); err != nil {
+	keys, err := extractKeys(container, qt.Keys)
+
+	// if the supplied container doesn't carry the attributes required to form a query, then we should gracefully skip
+	// performing this query
+	if errors.Is(err, ErrMissingRequiredKey) {
+		log.Printf("Skipping query evaluation for %s, resource is missing at least one key required to formulate the query: %s", container.Uri(), err.Error())
+		return err
+	}
+
+	if query, err := qt.eval(keys); err != nil {
 		return err
 	} else {
 		// invoke query, obtain result.
@@ -269,8 +296,14 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 			http.Client{},
 		}); err != nil {
 			return err
-		} else if handlerErr := handler(match); handlerErr != nil {
-			return handlerErr
+		} else {
+			//match.PassType = container.
+			match.PassUri = container.Uri()
+			match.PassType = container.PassType()
+
+			if handlerErr := handler(match); handlerErr != nil {
+				return handlerErr
+			}
 		}
 	}
 

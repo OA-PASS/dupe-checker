@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dupe-checker/model"
 	_ "embed"
+	"errors"
 	"fmt"
 	"github.com/knakk/rdf"
 	"github.com/stretchr/testify/assert"
@@ -276,7 +277,7 @@ func TestTemplate_BuildAndEval(t *testing.T) {
 	esQuery, err := tmpl.eval([]KvPair{{"@type", "Submission"}, {"doi", "10.1.2.4/567"}})
 
 	assert.Nil(t, err)
-	assert.Equal(t, "http://elasticsearch:9200/pass?q=@type:Submission+doi:10.1.2.4/567&default_operator=AND", esQuery)
+	assert.Equal(t, "http://elasticsearch.local:9200/pass?q=@type:Submission+doi:10.1.2.4/567&default_operator=AND", esQuery)
 }
 
 func TestTemplate_ExtractKeys(t *testing.T) {
@@ -284,7 +285,8 @@ func TestTemplate_ExtractKeys(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(container.PassProperties()))
 
-	kvp := extractKeys(container, []string{"journalName", "issn"})
+	kvp, err := extractKeys(container, []string{"issn", "journalName"})
+	assert.Nil(t, err)
 	assert.Equal(t, 3, len(kvp))
 
 	assert.Equal(t, "journalName", kvp[0].Key)
@@ -293,6 +295,20 @@ func TestTemplate_ExtractKeys(t *testing.T) {
 	assert.Equal(t, "Online:1600-0528", kvp[1].Value)
 	assert.Equal(t, "issn", kvp[2].Key)
 	assert.Equal(t, "Print:0301-5661", kvp[2].Value)
+}
+
+func TestTemplate_ExtractMissingRequiredKeys(t *testing.T) {
+	container, err := model.NewContainerFromReader(strings.NewReader(passJournal), rdf.NTriples)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(container.PassProperties()))
+
+	kvp, err := extractKeys(container, []string{"moo", "foo"})
+	assert.Zero(t, kvp)
+	assert.NotNil(t, err)
+
+	assert.True(t, errors.Is(err, ErrMissingRequiredKey))
+	assert.True(t, strings.Contains(err.Error(), "moo"))
+	assert.True(t, strings.Contains(err.Error(), "foo"))
 }
 
 func TestTemplate_Execute(t *testing.T) {
