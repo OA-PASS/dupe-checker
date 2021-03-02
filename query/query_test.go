@@ -397,12 +397,7 @@ func TestPlanAndTemplate_ExecuteSimpleOrArray(t *testing.T) {
 	resultProcessTriggered := 0
 	//resultProcessSuccessfully := 0
 	// Execute the parent plan
-	// ISSN / JournalName template is wrong
-	// http://elasticsearch.local:9200/pass/_search?q=journalName:"Community%20dentistry%20and%20oral%20epidemiology"+issn:"*Online:1600-0528*"+issn:"*Print:0301-5661*"&default_operator=AND
-	// use 'issns' as query field instead of 'issn'
-	// not use quotes around multi-valued fields with an asterisk
-	// escape the colon
-	// and even then, all the ISSNs are on the query, when we only need one to match
+	// *note* all the ISSNs are on the query, when we only need one to match
 	if _, err := plans[journalType].Execute(container, func(result interface{}) (bool, error) {
 		resultProcessTriggered++
 
