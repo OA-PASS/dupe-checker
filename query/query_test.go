@@ -395,7 +395,7 @@ func TestPlanAndTemplate_ExecuteSimpleOrArray(t *testing.T) {
 	assert.Equal(t, "http://oapass.org/ns/pass#Journal", resourceType)
 
 	resultProcessTriggered := 0
-	//resultProcessSuccessfully := 0
+	resultProcessSuccessfully := 0
 	// Execute the parent plan
 	// *note* all the ISSNs are on the query, when we only need one to match
 	if _, err := plans[journalType].Execute(container, func(result interface{}) (bool, error) {
@@ -423,14 +423,14 @@ func TestPlanAndTemplate_ExecuteSimpleOrArray(t *testing.T) {
 		//assert.Equal(t, "Journal", match.PassType)
 		//assert.Equal(t, match.HitCount, len(match.MatchingUris))
 
-		//resultProcessSuccessfully = true
-		return false, nil
+		resultProcessSuccessfully++
+		return false, nil // don't short circuit
 	}); err != nil {
 		assert.Fail(t, fmt.Sprintf("%s", err.Error()))
 	}
 
 	assert.Equal(t, 2, resultProcessTriggered)
-	//assert.True(t, resultProcessSuccessfully)
+	assert.Equal(t, 2, resultProcessSuccessfully)
 
 }
 
