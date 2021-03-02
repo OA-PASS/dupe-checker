@@ -136,7 +136,7 @@ func (tb *tmplBuilderImpl) String() string {
 		strings.Join(tb.keys, ","), tb.query)
 }
 
-func (tb *tmplBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) error {
+func (tb *tmplBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) (bool, error) {
 	panic("implement me")
 }
 
@@ -292,7 +292,7 @@ func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 }
 
 // Template is also a Plan.
-func (qt Template) Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) error {
+func (qt Template) Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) (bool, error) {
 	// we've been built already
 	// extract the keys from the container
 	// eval(...) the query
@@ -304,29 +304,29 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 	// performing this query
 	if errors.Is(err, ErrMissingRequiredKey) {
 		log.Printf("Skipping query evaluation for %s, resource is missing at least one key required to formulate the query: %s", container.Uri(), err.Error())
-		return err
+		return false, err
 	}
 
 	if query, err := qt.eval(keys); err != nil {
-		return err
+		return false, err
 	} else {
 		// invoke query, obtain result.
 		if match, err := performQuery(query, ElasticSearchClient{
 			http.Client{},
 		}); err != nil {
-			return err
+			return true, err
 		} else {
 			//match.PassType = container.
 			match.PassUri = container.Uri()
 			match.PassType = container.PassType()
 
 			if _, handlerErr := handler(match); handlerErr != nil {
-				return handlerErr
+				return true, handlerErr
 			}
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
 func (qt Template) Children() []Plan {

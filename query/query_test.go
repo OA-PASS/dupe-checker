@@ -333,7 +333,7 @@ func TestTemplate_Execute(t *testing.T) {
 	tmpl := plan.(Template)
 
 	processedResult := false
-	err = tmpl.Execute(container, func(result interface{}) (bool, error) {
+	_, err = tmpl.Execute(container, func(result interface{}) (bool, error) {
 		assert.Nil(t, err)
 		assert.IsType(t, Match{}, result)
 
@@ -409,7 +409,7 @@ func TestPlanAndTemplate_ExecuteSimple(t *testing.T) {
 	resultProcessTriggered := false
 	resultProcessSuccessfully := false
 	// Execute the parent plan
-	if err := plans[journalType].Execute(container, func(result interface{}) (bool, error) {
+	if _, err := plans[journalType].Execute(container, func(result interface{}) (bool, error) {
 		resultProcessTriggered = true
 
 		// sanity check container

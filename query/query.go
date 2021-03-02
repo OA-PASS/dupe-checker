@@ -96,7 +96,10 @@ type TemplateBuilder interface {
 }
 
 type Plan interface {
-	Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) error
+	// Executes the query Plan for the supplied container.  The handler accepts the result, and determines if processing
+	// should be short-circuited by returning true.  The Execute method returns true if processing should be
+	// short-circuited.
+	Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) (bool, error)
 	Children() []Plan
 }
 

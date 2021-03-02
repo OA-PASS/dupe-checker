@@ -68,9 +68,10 @@ func (pb *planBuilderImpl) addTemplateBuilder() *tmplBuilderImpl {
 	return &tb
 }
 
-func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) error {
+func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) (bool, error) {
 	if !pb.built {
-		return Error{
+		// we return true here to indicate that we should short-circuit
+		return true, Error{
 			wrapped: ErrIllegalStateNotBuilt,
 			context: fmt.Sprintf("cannot execute plan for container %s, plan %T@%p is not built",
 				container.Uri(), pb, pb),
@@ -85,50 +86,114 @@ func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(re
 		// a valid boolean operator, and we can't do anything with zero query templates.
 
 		if len(pb.templates) > 1 {
-			return Error{
+			// we return true here to indicate that we should short-circuit
+			return true, Error{
 				wrapped: ErrIllegalStateTooManyQueryTemplates,
 				context: fmt.Sprintf("%T@%p has %d query templates, but a Noop boolean operator.  Either remove the extra query templates or wrap them in a boolean operator.", pb, pb, len(pb.templates)),
 			}
 		}
 
+		// returning 'true' with errors because we should short-circuit; there's been an unrecoverable error.
 		if len(pb.templates) == 0 {
-			return Error{
+			// we return true here to indicate that we should short-circuit
+			return true, Error{
 				wrapped: ErrIllegalStateZeroQueryTemplates,
 				context: fmt.Sprintf("%T@%p has %d query templates; exactly one template is required", pb, pb, len(pb.templates)),
 			}
 		}
 
-		tmplBuilder := pb.templates[0]
+		return executeTemplate(pb.templates[0], handler, container)
 
-		if !tmplBuilder.built {
-			return Error{
-				wrapped: ErrIllegalStateNotBuilt,
-				context: fmt.Sprintf("%T@%p has not been built, and cannot be executed", tmplBuilder, tmplBuilder),
+	case Or:
+		// boolean or the results from each child; we can short circuit on the first true value
+		var result bool
+		var lastErr error
+		for _, childPlan := range pb.children {
+			shortCircuit, err := executeInternal(childPlan, container, handler)
+			lastErr = err
+			result = result || shortCircuit
+			if result {
+				return result, err
 			}
 		}
 
-		if template, err := tmplBuilder.asTemplate(); err != nil {
-			return err
-		} else {
-			return template.Execute(container, handler)
-		}
-
-	//case Or:
-	//	// boolean or the results from each child; we can short circuit on the first true value
-	//	for _, childPlan := range pb.children {
-	//		childPlan.
-	//	}
+		return result, lastErr
 	default:
 		panic(fmt.Sprintf("%T@%p: operator %v unsupported", pb, pb, pb.oper))
 	}
 }
 
-func executeInternal(pb *planBuilderImpl, container model.LdpContainer, handler func(result interface{}) error) (bool, error) {
+func executeTemplate(tmplBuilder *tmplBuilderImpl, handler func(result interface{}) (bool, error), container model.LdpContainer) (bool, error) {
+	if !tmplBuilder.built {
+		return true, Error{
+			wrapped: ErrIllegalStateNotBuilt,
+			context: fmt.Sprintf("%T@%p has not been built, and cannot be executed", tmplBuilder, tmplBuilder),
+		}
+	}
+
+	if template, err := tmplBuilder.asTemplate(); err != nil {
+		// if there's an error casting the template builder to a Template, we should return true, and short-circuit
+		return true, err
+	} else {
+		return template.Execute(container, handler)
+	}
+}
+
+func executeInternal(pb *planBuilderImpl, container model.LdpContainer, handler func(result interface{}) (bool, error)) (bool, error) {
 	for _, childPlan := range pb.children {
 		return executeInternal(childPlan, container, handler)
 	}
 
-	// FIXME
+	if len(pb.templates) == 0 {
+		// TODO should be an error to get to the bottom of a tree and encounter no templates
+		return false, Error{}
+	}
+
+	switch pb.oper {
+	case Or:
+		var result bool
+		var lastErr error
+		// we execute each template until we have executed them all or until one returns true
+		for _, t := range pb.templates {
+			if shortCircuit, err := executeTemplate(t, handler, container); shortCircuit {
+				return true, err
+			} else {
+				result = result || shortCircuit
+				lastErr = err
+			}
+
+			if result {
+				return result, lastErr
+			}
+		}
+	case Noop:
+		// we have a stand-alone query with no boolean operator
+
+		// insure there is exactly one query template.  We can't do anything with multiple query templates unless there is
+		// a valid boolean operator, and we can't do anything with zero query templates.
+
+		if len(pb.templates) > 1 {
+			// returning true b/c we should short-circuit with this error
+			return true, Error{
+				wrapped: ErrIllegalStateTooManyQueryTemplates,
+				context: fmt.Sprintf("%T@%p has %d query templates, but a Noop boolean operator.  Either remove the extra query templates or wrap them in a boolean operator.", pb, pb, len(pb.templates)),
+			}
+		}
+
+		// returning 'true' with errors because we should short-circuit; there's been an unrecoverable error.
+		if len(pb.templates) == 0 {
+			return true, Error{
+				wrapped: ErrIllegalStateZeroQueryTemplates,
+				context: fmt.Sprintf("%T@%p has %d query templates; exactly one template is required", pb, pb, len(pb.templates)),
+			}
+		}
+
+		return executeTemplate(pb.templates[0], handler, container)
+	default:
+		panic(fmt.Sprintf("Unsupported operation: %v", pb.oper))
+	}
+
+	// TODO not sure if this is correct or not
 	return false, Error{}
 }
 
