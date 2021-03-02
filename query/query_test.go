@@ -114,7 +114,7 @@ func Test_DecodeSimple(t *testing.T) {
 				tmplBuilder := p.(*tmplBuilderImpl)
 				assert.True(t, tmplBuilder.built)
 				assert.EqualValues(t, []string{"nlmta"}, tmplBuilder.keys)
-				assert.Equal(t, "es query for nlmta", tmplBuilder.query)
+				assert.Equal(t, "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND", tmplBuilder.query)
 				actualTotalTemplateCount++
 			case *planBuilderImpl:
 				assert.True(t, p.(*planBuilderImpl).built)
@@ -285,7 +285,7 @@ func TestTemplate_ExtractKeys(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(container.PassProperties()))
 
-	kvp, err := extractKeys(container, []string{"issn", "journalName"})
+	kvp, err := extractKeys(container, []string{"journalName", "issn"})
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(kvp))
 
