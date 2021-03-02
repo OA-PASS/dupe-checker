@@ -11,7 +11,6 @@ import (
 	"github.com/yourbasic/graph/build"
 	"html/template"
 	"log"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -318,17 +317,24 @@ func TestTemplate_Execute(t *testing.T) {
 	tmpl := plan.(Template)
 
 	processedResult := false
-	err = tmpl.Execute(container, func(result string) error {
-		atoi, err := strconv.Atoi(result)
+	err = tmpl.Execute(container, func(result interface{}) error {
 		assert.Nil(t, err)
-		assert.Equal(t, 1, atoi)
+		assert.IsType(t, Match{}, result)
+
+		m := result.(Match)
+
+		assert.NotZero(t, m.QueryUrl)
+		assert.Equal(t, 1, m.HitCount)
+		assert.Equal(t, 1, len(m.MatchingUris))
+		assert.Equal(t, container.Uri(), m.MatchingUris[0])
+
 		processedResult = true
+
 		return nil
 	})
 
 	assert.Nil(t, err)
 	assert.True(t, processedResult)
-
 }
 
 /*

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"text/template"
 )
@@ -118,7 +117,7 @@ func (tb *tmplBuilderImpl) String() string {
 		strings.Join(tb.keys, ","), tb.query)
 }
 
-func (tb *tmplBuilderImpl) Execute(container model.LdpContainer, handler func(result string) error) error {
+func (tb *tmplBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) error) error {
 	panic("implement me")
 }
 
@@ -160,45 +159,64 @@ func extractKeys(container model.LdpContainer, keys []string) []KvPair {
 }
 
 // Executes the provided ES query string and returns the number of hits.
-func performQuery(query string, esClient ElasticSearchClient) (int, error) {
+func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 	var err error
 	var req *http.Request
 	var res *http.Response
 
 	if req, err = http.NewRequest("GET", query, nil); err != nil {
-		return -1, err
+		return Match{}, err
 	}
 
 	if res, err = esClient.http.Do(req); err != nil {
-		return -1, err
+		return Match{}, err
 	}
 
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return -1, fmt.Errorf("query: request '%s' returned unexpected status code '%d' (%s)", query, res.StatusCode, res.Status)
+		return Match{}, fmt.Errorf("query: request '%s' returned unexpected status code '%d' (%s)", query, res.StatusCode, res.Status)
 	}
 
 	resbytes := &bytes.Buffer{}
 	if _, err = io.Copy(resbytes, res.Body); err != nil {
-		return -1, fmt.Errorf("query: unable to read body of request '%s': %w", query, err)
+		return Match{}, fmt.Errorf("query: unable to read body of request '%s': %w", query, err)
 	}
 
 	hits := &struct {
 		Hits struct {
 			Total int
+			Hits  []struct {
+				Source struct {
+					Id string `json:"@id"`
+				} `json:"_source"`
+			}
 		}
 	}{}
 
 	if err = json.Unmarshal(resbytes.Bytes(), hits); err != nil {
-		return -1, fmt.Errorf("query: unable to unmarshal body of request '%s': %w", query, err)
+		return Match{}, fmt.Errorf("query: unable to unmarshal body of request '%s': %w", query, err)
 	}
 
-	return hits.Hits.Total, nil
+	m := Match{
+		QueryUrl: query,
+		HitCount: hits.Hits.Total,
+	}
+
+	if m.HitCount == 0 {
+		return m, nil
+	}
+
+	for _, hit := range hits.Hits.Hits {
+		m.MatchingUris = append(m.MatchingUris, hit.Source.Id)
+	}
+
+	// m.PassUri and m.PassType are provided by the caller
+	return m, nil
 }
 
 // Template is also a Plan.
-func (qt Template) Execute(container model.LdpContainer, handler func(result string) error) error {
+func (qt Template) Execute(container model.LdpContainer, handler func(result interface{}) error) error {
 	// we've been built already
 	// extract the keys from the container
 	// eval(...) the query
@@ -208,11 +226,11 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result str
 		return err
 	} else {
 		// invoke query, obtain result.
-		if resultCount, err := performQuery(query, ElasticSearchClient{
+		if match, err := performQuery(query, ElasticSearchClient{
 			http.Client{},
 		}); err != nil {
 			return err
-		} else if handlerErr := handler(strconv.Itoa(resultCount)); handlerErr != nil {
+		} else if handlerErr := handler(match); handlerErr != nil {
 			return handlerErr
 		}
 	}

@@ -61,7 +61,7 @@ func (pb *planBuilderImpl) addTemplateBuilder() *tmplBuilderImpl {
 	return &tb
 }
 
-func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(result string) error) error {
+func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) error) error {
 	panic("implement me")
 }
 

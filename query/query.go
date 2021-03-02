@@ -78,11 +78,25 @@ type TemplateBuilder interface {
 }
 
 type Plan interface {
-	Execute(container model.LdpContainer, handler func(result string) error) error
+	Execute(container model.LdpContainer, handler func(result interface{}) error) error
 	Children() []Plan
 }
 
 type Config interface {
 	Types() []string
 	QueryPlan(resourceType string) PlanBuilder
+}
+
+type Match struct {
+	// The elastic search query url used to perform the query
+	QueryUrl string
+	// The number of hits in the result, should be 1.  A count greater than 1 indicates a suspected duplicate
+	HitCount int
+	// This is the URI of the resource that is being searched for duplicates
+	PassUri string
+	// This is the type of the PASS resource that is being searched for duplicates
+	PassType string
+	// These are the URIs of potential matches, and the number of potential matches should equal the number of hits.
+	// The PassUri is expected to be present in this slice
+	MatchingUris []string
 }
