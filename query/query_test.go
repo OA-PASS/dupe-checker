@@ -353,6 +353,92 @@ func TestTemplate_Execute(t *testing.T) {
 	assert.True(t, processedResult)
 }
 
+func TestPlanAndTemplate_ExecuteSimpleOrArray(t *testing.T) {
+	// Boilerplate and sanity checks to decode the query plan for a Journal
+	journalType := "http://oapass.org/ns/pass#Journal"
+	plans := decoder{}.Decode(queryConfigSimpleOrArray)
+	assert.NotNil(t, plans)
+	assert.Equal(t, 1, len(plans))
+	expectedTotalPlanCount := 4 // the root plan and the or plan, and the two queries; all should be built.
+	expectedBuiltCount := expectedTotalPlanCount
+	verifyPlans(t, plans, expectedBuiltCount, expectedTotalPlanCount)
+	assert.NotZero(t, plans[journalType])
+
+	// Boilerplate and sanity checks for reading in a Journal container off of the filesystem
+	// We're going to execute the query plan for the Journal, which will query ElasticSearch for any duplicates
+
+	// Normally the container is provided by the repository visitor but here we read it off of the filesystem.
+	container, err := model.NewContainerFromReader(strings.NewReader(passJournal), rdf.NTriples)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(container.PassProperties()))
+	assert.Equal(t, "http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f", container.Uri())
+	assert.Equal(t, "Journal", container.PassType())
+	isPass, resourceType := container.IsPassResource()
+	assert.True(t, isPass)
+	assert.Equal(t, "http://oapass.org/ns/pass#Journal", resourceType)
+
+	// Execute the parent plan
+	//plans[journalType].Execute()
+
+}
+
+func TestPlanAndTemplate_ExecuteSimple(t *testing.T) {
+	// Boilerplate and sanity checks to decode the query plan for a Journal
+	journalType := "http://oapass.org/ns/pass#Journal"
+	plans := decoder{}.Decode(queryConfigSimple)
+	assert.NotNil(t, plans)
+	assert.Equal(t, 1, len(plans)) // should be only one plan for the Journal type
+	expectedTotalPlanCount := 2    // the root plan and the single query
+	expectedBuiltCount := expectedTotalPlanCount
+	verifyPlans(t, plans, expectedBuiltCount, expectedTotalPlanCount)
+	assert.NotZero(t, plans[journalType])
+
+	// Boilerplate and sanity checks for reading in a Journal container off of the filesystem
+	// We're going to execute the query plan for the Journal, which will query ElasticSearch for any duplicates
+
+	// Normally the container is provided by the repository visitor but here we read it off of the filesystem.
+	container, err := model.NewContainerFromReader(strings.NewReader(passJournal), rdf.NTriples)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(container.PassProperties()))
+	assert.Equal(t, "http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f", container.Uri())
+	assert.Equal(t, "Journal", container.PassType())
+	isPass, resourceType := container.IsPassResource()
+	assert.True(t, isPass)
+	assert.Equal(t, "http://oapass.org/ns/pass#Journal", resourceType)
+
+	resultProcessTriggered := false
+	resultProcessSuccessfully := false
+	// Execute the parent plan
+	if err := plans[journalType].Execute(container, func(result interface{}) error {
+		resultProcessTriggered = true
+
+		// sanity check container
+		isPass, passType := container.IsPassResource()
+		assert.True(t, isPass)
+		assert.Equal(t, "http://oapass.org/ns/pass#Journal", passType)
+		assert.Equal(t, "Journal", container.PassType())
+		assert.Equal(t, "http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f", container.Uri())
+		assert.Equal(t, 3, len(container.PassProperties()))
+
+		match := result.(Match)
+
+		assert.Equal(t, "http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f", match.PassUri)
+		assert.Equal(t, 1, match.HitCount)
+		assert.NotZero(t, match.QueryUrl)
+		assert.Equal(t, "Journal", match.PassType)
+		assert.Equal(t, match.HitCount, len(match.MatchingUris))
+
+		resultProcessSuccessfully = true
+		return nil
+	}); err != nil {
+		assert.Fail(t, fmt.Sprintf("%s", err.Error()))
+	}
+
+	assert.True(t, resultProcessTriggered)
+	assert.True(t, resultProcessSuccessfully)
+
+}
+
 /*
 func Test_DecodeConfig(t *testing.T) {
 	plans := make(map[string]Plan)

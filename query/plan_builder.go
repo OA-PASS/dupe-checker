@@ -2,9 +2,16 @@ package query
 
 import (
 	"dupe-checker/model"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+var ErrIllegalStateAlreadyBuilt = errors.New("query: object has already been built")
+var ErrIllegalStateNotBuilt = errors.New("query: object has not been built")
+var ErrIllegalStateTooManyQueryTemplates = errors.New("query: plan has too many query templates")
+var ErrIllegalStateZeroQueryTemplates = errors.New("query: plan has zero query templates")
+var ErrTypeCast = errors.New("query: error performing cast")
 
 type planBuilderImpl struct {
 	built     bool
@@ -62,7 +69,87 @@ func (pb *planBuilderImpl) addTemplateBuilder() *tmplBuilderImpl {
 }
 
 func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) error) error {
-	panic("implement me")
+	if !pb.built {
+		return Error{
+			wrapped: ErrIllegalStateNotBuilt,
+			context: fmt.Sprintf("cannot execute plan for container %s, plan %T@%p is not built",
+				container.Uri(), pb, pb),
+		}
+	}
+
+	switch pb.oper {
+	case Noop:
+		// we have a stand-alone query with no boolean operator
+
+		// insure there is exactly one query template.  We can't do anything with multiple query templates unless there is
+		// a valid boolean operator, and we can't do anything with zero query templates.
+
+		if len(pb.templates) > 1 {
+			return Error{
+				wrapped: ErrIllegalStateTooManyQueryTemplates,
+				context: fmt.Sprintf("%T@%p has %d query templates, but a Noop boolean operator.  Either remove the extra query templates or wrap them in a boolean operator.", pb, pb, len(pb.templates)),
+			}
+		}
+
+		if len(pb.templates) == 0 {
+			return Error{
+				wrapped: ErrIllegalStateZeroQueryTemplates,
+				context: fmt.Sprintf("%T@%p has %d query templates; exactly one template is required", pb, pb, len(pb.templates)),
+			}
+		}
+
+		tmplBuilder := pb.templates[0]
+
+		if !tmplBuilder.built {
+			return Error{
+				wrapped: ErrIllegalStateNotBuilt,
+				context: fmt.Sprintf("%T@%p has not been built, and cannot be executed", tmplBuilder, tmplBuilder),
+			}
+		}
+
+		var (
+			template Template
+			err      error
+		)
+
+		if template, err = tmplBuilder.asTemplate(); err != nil {
+			return err
+		}
+
+		//return template.Execute(container, func(result interface{}) error {
+		//	if match, ok := result.(Match); !ok {
+		//		return Error{
+		//			ErrTypeCast,
+		//			fmt.Sprintf("expected result to be a Match, but was %T", result),
+		//		}
+		//	} else {
+		//		// ought to make some kind of assertion of our expectations
+		//		if match.HitCount != 1 {
+		//			log.Printf("unexpected number of matches for %s: %d (query url was %s)", match.PassUri, match.HitCount, match.QueryUrl)
+		//		}
+		//	}
+		//	// where we need to return true
+		//	return nil
+		//})
+		return template.Execute(container, handler)
+
+	//case Or:
+	//	// boolean or the results from each child; we can short circuit on the first true value
+	//	for _, childPlan := range pb.children {
+	//		childPlan.
+	//	}
+	default:
+		panic(fmt.Sprintf("%T@%p: operator %v unsupported", pb, pb, pb.oper))
+	}
+}
+
+func executeInternal(pb *planBuilderImpl, container model.LdpContainer, handler func(result interface{}) error) (bool, error) {
+	for _, childPlan := range pb.children {
+		return executeInternal(childPlan, container, handler)
+	}
+
+	// FIXME
+	return false, Error{}
 }
 
 // Recursively builds child plans and query templates

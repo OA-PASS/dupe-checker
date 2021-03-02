@@ -2,6 +2,7 @@ package query
 
 import (
 	"dupe-checker/model"
+	"fmt"
 	"net/http"
 )
 
@@ -11,6 +12,23 @@ const (
 	Or
 	And
 )
+
+type Error struct {
+	wrapped error
+	context string
+}
+
+func (e Error) Unwrap() error {
+	if e.wrapped != nil {
+		return e.wrapped
+	}
+
+	return nil
+}
+
+func (e Error) Error() string {
+	return fmt.Sprintf("%s: %s", e.wrapped.Error(), e.context)
+}
 
 type ElasticSearchClient struct {
 	http http.Client

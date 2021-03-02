@@ -6,31 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
-	"text/template"
 )
 
 var ErrMissingRequiredKey = errors.New("query: missing required key(s)")
-
-type Error struct {
-	wrapped error
-	context string
-}
-
-func (e Error) Unwrap() error {
-	if e.wrapped != nil {
-		return e.wrapped
-	}
-
-	return nil
-}
-
-func (e Error) Error() string {
-	return fmt.Sprintf("%s: %s", e.wrapped.Error(), e.context)
-}
+var ErrPerformingElasticSearchRequest = errors.New("query: error performing search")
 
 var templateFuncs = template.FuncMap{
 	// The name "inc" is what the function will be called in the template text.
@@ -39,6 +24,9 @@ var templateFuncs = template.FuncMap{
 	},
 	"dec": func(i int) int {
 		return i - 1
+	},
+	"urlqueryesc": func(query string) string {
+		return url.PathEscape(query)
 	},
 }
 
@@ -119,6 +107,17 @@ func (tb *tmplBuilderImpl) Build() (Plan, error) {
 	tb.built = true
 
 	// return a Template
+	return tb.asTemplate()
+}
+
+func (tb *tmplBuilderImpl) asTemplate() (Template, error) {
+	if !tb.built {
+		return Template{}, Error{
+			wrapped: ErrIllegalStateNotBuilt,
+			context: fmt.Sprintf("%T@%p must be built before it can be returned as a Template", tb, tb),
+		}
+	}
+
 	if tmpl, err := template.
 		New(fmt.Sprintf("Template for %T@%p", tb, tb)).
 		Funcs(templateFuncs).
@@ -232,12 +231,31 @@ func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return Match{}, fmt.Errorf("query: request '%s' returned unexpected status code '%d' (%s)", query, res.StatusCode, res.Status)
+		err = Error{
+			wrapped: ErrPerformingElasticSearchRequest,
+			context: "",
+		}
 	}
 
 	resbytes := &bytes.Buffer{}
-	if _, err = io.Copy(resbytes, res.Body); err != nil {
-		return Match{}, fmt.Errorf("query: unable to read body of request '%s': %w", query, err)
+	if _, err := io.Copy(resbytes, res.Body); err != nil {
+		return Match{}, Error{
+			wrapped: ErrPerformingElasticSearchRequest,
+			context: fmt.Sprintf("unable to read body of request '%s': %s", query, err.Error()),
+		}
+	}
+
+	// if the status code wasn't a 200, return the body of the response in the returned error
+	if err != nil {
+		if e, ok := err.(Error); ok {
+			e.context = fmt.Sprintf("'%s' returned unexpected status code '%d' (%s)\n%s", query, res.StatusCode, res.Status, resbytes.String())
+			err = e
+		} else {
+			e.context = fmt.Sprintf("'%s' returned unexpected status code '%d' (%s)", query, res.StatusCode, res.Status)
+			err = e
+		}
+
+		return Match{}, err
 	}
 
 	hits := &struct {
@@ -268,6 +286,7 @@ func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 		m.MatchingUris = append(m.MatchingUris, hit.Source.Id)
 	}
 
+	//log.Printf("executed query %s with result %v", query, m)
 	// m.PassUri and m.PassType are provided by the caller
 	return m, nil
 }

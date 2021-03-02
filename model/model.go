@@ -62,12 +62,12 @@ func (ldpc LdpContainer) Types() []string {
 }
 
 // The PASS type of this container, if any (note: does not return a URI, only the remainder after trimming the
-// 'http://oapass.org/ns/pass#' prefix).
+// 'http://oapass.org/ns/pass#' prefix).  See IsPassResource if you'd like the full URI.
 func (ldpc LdpContainer) PassType() string {
 	passType := ""
 	ldpc.filterTriple(func(triple rdf.Triple) bool {
 		if triple.Pred.String() == RdfTypeUri && strings.HasPrefix(triple.Obj.String(), PassResourceUriPrefix) {
-			passType = strings.TrimPrefix(PassResourceUriPrefix, triple.Obj.String())
+			passType = strings.TrimPrefix(triple.Obj.String(), PassResourceUriPrefix)
 			return true
 		}
 		return false
