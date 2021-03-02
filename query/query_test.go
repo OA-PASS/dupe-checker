@@ -333,7 +333,7 @@ func TestTemplate_Execute(t *testing.T) {
 	tmpl := plan.(Template)
 
 	processedResult := false
-	err = tmpl.Execute(container, func(result interface{}) error {
+	err = tmpl.Execute(container, func(result interface{}) (bool, error) {
 		assert.Nil(t, err)
 		assert.IsType(t, Match{}, result)
 
@@ -346,7 +346,7 @@ func TestTemplate_Execute(t *testing.T) {
 
 		processedResult = true
 
-		return nil
+		return true, nil
 	})
 
 	assert.Nil(t, err)
@@ -409,7 +409,7 @@ func TestPlanAndTemplate_ExecuteSimple(t *testing.T) {
 	resultProcessTriggered := false
 	resultProcessSuccessfully := false
 	// Execute the parent plan
-	if err := plans[journalType].Execute(container, func(result interface{}) error {
+	if err := plans[journalType].Execute(container, func(result interface{}) (bool, error) {
 		resultProcessTriggered = true
 
 		// sanity check container
@@ -429,7 +429,7 @@ func TestPlanAndTemplate_ExecuteSimple(t *testing.T) {
 		assert.Equal(t, match.HitCount, len(match.MatchingUris))
 
 		resultProcessSuccessfully = true
-		return nil
+		return true, nil
 	}); err != nil {
 		assert.Fail(t, fmt.Sprintf("%s", err.Error()))
 	}

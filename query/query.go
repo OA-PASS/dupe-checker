@@ -96,7 +96,7 @@ type TemplateBuilder interface {
 }
 
 type Plan interface {
-	Execute(container model.LdpContainer, handler func(result interface{}) error) error
+	Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) error
 	Children() []Plan
 }
 

@@ -136,7 +136,7 @@ func (tb *tmplBuilderImpl) String() string {
 		strings.Join(tb.keys, ","), tb.query)
 }
 
-func (tb *tmplBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) error) error {
+func (tb *tmplBuilderImpl) Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) error {
 	panic("implement me")
 }
 
@@ -292,7 +292,7 @@ func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 }
 
 // Template is also a Plan.
-func (qt Template) Execute(container model.LdpContainer, handler func(result interface{}) error) error {
+func (qt Template) Execute(container model.LdpContainer, handler func(result interface{}) (bool, error)) error {
 	// we've been built already
 	// extract the keys from the container
 	// eval(...) the query
@@ -320,7 +320,7 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 			match.PassUri = container.Uri()
 			match.PassType = container.PassType()
 
-			if handlerErr := handler(match); handlerErr != nil {
+			if _, handlerErr := handler(match); handlerErr != nil {
 				return handlerErr
 			}
 		}
