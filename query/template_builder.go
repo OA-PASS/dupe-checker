@@ -140,18 +140,57 @@ func (qt Template) eval(kvp []KvPair) (string, error) {
 	}
 }
 
+var ErrMissingKey = errors.New("missing required key(s) for query")
+
 func extractKeys(container model.LdpContainer, keys []string) []KvPair {
-	var result []KvPair
+	extractedKvps := make(map[string][]KvPair)
+
 	for propKey, propVal := range container.PassProperties() {
 		for _, key := range keys {
 			if !strings.HasSuffix(propKey, key) {
 				continue
 			} else {
 				for _, value := range propVal {
-					result = append(result, KvPair{key, value})
+					if pairs, ok := extractedKvps[key]; ok {
+						pairs = append(pairs, KvPair{key, value})
+					} else {
+						extractedKvps[key] = []KvPair{{key, value}}
+					}
 				}
 				break
 			}
+		}
+	}
+
+	// non-PASS properties like RDF type are handled specially, unfortunately
+	for i := range keys {
+		if keys[i] == "@type" {
+			// if the @type is requested, find the pass type and include it in the returned KVPairs.
+			for j := range container.Types() {
+				if strings.HasPrefix(container.Types()[j], model.PassResourceUriPrefix) {
+					extractedKvps["@type"] = []KvPair{{"@type", strings.TrimPrefix(container.Types()[j], model.PassResourceUriPrefix)}}
+				}
+			}
+		}
+	}
+
+	var missing []string
+
+	for _, key := range keys {
+		if _, present := extractedKvps[key]; !present {
+			missing = append(missing, key)
+		}
+	}
+
+	if len(missing) > 0 {
+		panic(fmt.Errorf("missing required key(s) for query: %s", strings.Join(missing, ",")))
+	}
+
+	var result []KvPair
+
+	for _, v := range extractedKvps {
+		for i := range v {
+			result = append(result, v[i])
 		}
 	}
 
