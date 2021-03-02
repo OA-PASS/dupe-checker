@@ -289,11 +289,28 @@ func TestTemplate_ExtractKeys(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(kvp))
 
-	assert.Equal(t, "journalName", kvp[0].Key)
+	assert.Equal(t, "journalName", kvp[0].Key.String())
 	assert.Equal(t, "Community dentistry and oral epidemiology", kvp[0].Value)
-	assert.Equal(t, "issn", kvp[1].Key)
+	assert.Equal(t, "issn", kvp[1].Key.String())
 	assert.Equal(t, "Online:1600-0528", kvp[1].Value)
-	assert.Equal(t, "issn", kvp[2].Key)
+	assert.Equal(t, "issn", kvp[2].Key.String())
+	assert.Equal(t, "Print:0301-5661", kvp[2].Value)
+}
+
+func TestTemplate_ExtractMultiValue(t *testing.T) {
+	container, err := model.NewContainerFromReader(strings.NewReader(passJournal), rdf.NTriples)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(container.PassProperties()))
+
+	kvp, err := extractKeys(container, []string{"journalName", "issn*"})
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(kvp))
+
+	assert.Equal(t, "journalName", kvp[0].Key.String())
+	assert.Equal(t, "Community dentistry and oral epidemiology", kvp[0].Value)
+	assert.Equal(t, "issn", kvp[1].Key.String())
+	assert.Equal(t, "Online:1600-0528", kvp[1].Value)
+	assert.Equal(t, "issn", kvp[2].Key.String())
 	assert.Equal(t, "Print:0301-5661", kvp[2].Value)
 }
 
@@ -377,8 +394,48 @@ func TestPlanAndTemplate_ExecuteSimpleOrArray(t *testing.T) {
 	assert.True(t, isPass)
 	assert.Equal(t, "http://oapass.org/ns/pass#Journal", resourceType)
 
+	resultProcessTriggered := 0
+	//resultProcessSuccessfully := 0
 	// Execute the parent plan
-	//plans[journalType].Execute()
+	// ISSN / JournalName template is wrong
+	// http://elasticsearch.local:9200/pass/_search?q=journalName:"Community%20dentistry%20and%20oral%20epidemiology"+issn:"*Online:1600-0528*"+issn:"*Print:0301-5661*"&default_operator=AND
+	// use 'issns' as query field instead of 'issn'
+	// not use quotes around multi-valued fields with an asterisk
+	// escape the colon
+	// and even then, all the ISSNs are on the query, when we only need one to match
+	if _, err := plans[journalType].Execute(container, func(result interface{}) (bool, error) {
+		resultProcessTriggered++
+
+		assert.IsType(t, Match{}, result)
+
+		m := result.(Match)
+
+		assert.Equal(t, 1, m.HitCount, "Expecting exactly 1 result, but got %d.  Query URL was: %s", m.HitCount, m.QueryUrl)
+
+		//// sanity check container
+		//isPass, passType := container.IsPassResource()
+		//assert.True(t, isPass)
+		//assert.Equal(t, "http://oapass.org/ns/pass#Journal", passType)
+		//assert.Equal(t, "Journal", container.PassType())
+		//assert.Equal(t, "http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f", container.Uri())
+		//assert.Equal(t, 3, len(container.PassProperties()))
+		//
+		//match := result.(Match)
+		//
+		//assert.Equal(t, "http://fcrepo:8080/fcrepo/rest/journals/00/a6/ff/f7/00a6fff7-e4a9-4764-affd-5e9e74f5947f", match.PassUri)
+		//assert.Equal(t, 1, match.HitCount)
+		//assert.NotZero(t, match.QueryUrl)
+		//assert.Equal(t, "Journal", match.PassType)
+		//assert.Equal(t, match.HitCount, len(match.MatchingUris))
+
+		//resultProcessSuccessfully = true
+		return false, nil
+	}); err != nil {
+		assert.Fail(t, fmt.Sprintf("%s", err.Error()))
+	}
+
+	assert.Equal(t, 2, resultProcessTriggered)
+	//assert.True(t, resultProcessSuccessfully)
 
 }
 

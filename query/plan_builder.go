@@ -10,7 +10,8 @@ import (
 var ErrIllegalStateAlreadyBuilt = errors.New("query: object has already been built")
 var ErrIllegalStateNotBuilt = errors.New("query: object has not been built")
 var ErrIllegalStateTooManyQueryTemplates = errors.New("query: plan has too many query templates")
-var ErrIllegalStateZeroQueryTemplates = errors.New("query: plan has zero query templates")
+var ErrIllegalStateNoQueryTemplatesOrChildren = errors.New("query: plan has no query templates or child plans")
+var ErrIllegalStateNoQueryTemplate = errors.New("query: plan must have exactly one query template")
 var ErrTypeCast = errors.New("query: error performing cast")
 
 type planBuilderImpl struct {
@@ -94,15 +95,21 @@ func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(re
 		}
 
 		// returning 'true' with errors because we should short-circuit; there's been an unrecoverable error.
-		if len(pb.templates) == 0 {
+		if len(pb.templates) == 0 && len(pb.children) == 0 {
 			// we return true here to indicate that we should short-circuit
 			return true, Error{
-				wrapped: ErrIllegalStateZeroQueryTemplates,
-				context: fmt.Sprintf("%T@%p has %d query templates; exactly one template is required", pb, pb, len(pb.templates)),
+				wrapped: ErrIllegalStateNoQueryTemplatesOrChildren,
+				context: fmt.Sprintf("%T@%p has %d query templates and children; exactly one template or exactly one child is required", pb, pb, len(pb.templates)),
 			}
 		}
 
-		return executeTemplate(pb.templates[0], handler, container)
+		if len(pb.templates) == 1 {
+			return executeTemplate(pb.templates[0], handler, container)
+		} else if len(pb.children) == 1 {
+			return executeInternal(pb.children[0], container, handler)
+		} else {
+			panic("moo!")
+		}
 
 	case Or:
 		// boolean or the results from each child; we can short circuit on the first true value
@@ -155,7 +162,7 @@ func executeInternal(pb *planBuilderImpl, container model.LdpContainer, handler 
 		var lastErr error
 		// we execute each template until we have executed them all or until one returns true
 		for _, t := range pb.templates {
-			if shortCircuit, err := executeTemplate(t, handler, container); shortCircuit {
+			if shortCircuit, err := executeTemplate(t, handler, container); shortCircuit || err != nil {
 				return true, err
 			} else {
 				result = result || shortCircuit
@@ -183,7 +190,7 @@ func executeInternal(pb *planBuilderImpl, container model.LdpContainer, handler 
 		// returning 'true' with errors because we should short-circuit; there's been an unrecoverable error.
 		if len(pb.templates) == 0 {
 			return true, Error{
-				wrapped: ErrIllegalStateZeroQueryTemplates,
+				wrapped: ErrIllegalStateNoQueryTemplate,
 				context: fmt.Sprintf("%T@%p has %d query templates; exactly one template is required", pb, pb, len(pb.templates)),
 			}
 		}
@@ -194,7 +201,7 @@ func executeInternal(pb *planBuilderImpl, container model.LdpContainer, handler 
 	}
 
 	// TODO not sure if this is correct or not
-	return false, Error{}
+	return false, nil
 }
 
 // Recursively builds child plans and query templates

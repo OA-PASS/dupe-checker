@@ -6,16 +6,16 @@
           "keys": [
             "nlmta"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
         }
       },
       {
         "query": {
           "keys": [
             "journalName",
-            "issn"
+            "issn*"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key.ElasticField}}:{{if ismulti $e.Key}}*{{$e.Value | urlqueryesc}}*{{else}}\"{{$e.Value | urlqueryesc}}\"{{end}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
         }
       }
     ]

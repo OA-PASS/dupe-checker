@@ -25,18 +25,70 @@ var templateFuncs = template.FuncMap{
 	"dec": func(i int) int {
 		return i - 1
 	},
+	// escapes the string to be palatable for an elastic search query
 	"urlqueryesc": func(query string) string {
-		return url.PathEscape(query)
+		return strings.ReplaceAll(url.PathEscape(query), ":", "%3F")
+	},
+	// returns true if the key may have multiple values, e.g. an issn or locatorId
+	"ismulti": func(key Key) bool {
+		return key.IsMulti()
 	},
 }
 
-// Associates a named key with a value; used when evaluating the template
-// can this just be a map?
-type KvPair struct {
-	Key, Value string
+// A Key represents a field that is being used to match objects. Examples of Keys include 'journalName' or 'nlmta' on
+// Journal; or 'doi', 'pmid', or 'title' on Publication.
+//
+// Keys are derived from the RDF predicate of the PASS resource.  The predicate http://oapass.org/ns/pass#nlmta becomes
+// the Key("nlmta"); http://oapass.org/ns/pass#title becomes Key("title"), and so on.  Some RDF predicates may have multiple
+// values.  The http://oapass.org/ns/pass#issn or http://oapass.org/ns/pass#locatorIds are examples.  When a Key may
+// have multiple values, the Key is suffixed by an asterisk.  So the predicate http://oapass.org/ns/pass#issn becomes
+// Key("issn*"); http://oapass.org/ns/pass#locatorIds, Key("locatorIds*").
+//
+// Each Key will have an associated field in the index.  Many times the Key and the index field have the same name, but
+// sometimes they differ.  For example, the Key("issn*") has the index field name 'issns'.
+type Key string
+
+// Whether or not the Key may have multiple values.  For example, 'issn' or 'locatorIds' may have multiple values in
+// PASS model.  The Key will have an asterisk as a suffix if this is the case.
+func (k Key) IsMulti() bool {
+	return strings.HasSuffix(string(k), "*")
 }
 
-// Encapsulates an ES query and the keys it requires for evaluation
+// Answers the string representation of the Key, which conforms to the RDF predicate it is derived from.  For example,
+// this method will answer 'issn' for the Key("issn*").
+func (k Key) String() string {
+	s := string(k)
+	if k.IsMulti() {
+		return s[0 : len(s)-1]
+	}
+	return s
+}
+
+// Answers the corresponding field of the index that this Key may be queried by.  For example, this method will answer
+// 'issns' for the Key("issn*").  The mapping of a Key to the index field is currently hard-coded within this method.
+// By default this method answers Key.String().
+func (k Key) IndexField() string {
+	switch k.String() {
+	case "issn":
+		return "issns"
+	default:
+		return k.String()
+	}
+}
+
+// Associates a named key with a value; used when evaluating the template.  The value for a Key is typically extracted
+// from the RDF form of a PASS resource.
+type KvPair struct {
+	Key   Key
+	Value string
+}
+
+// Whether or not the Key may have multiple values.  For example, Key("issn*") or Key("locatorIds*").
+func (kv KvPair) IsMulti() bool {
+	return kv.Key.IsMulti()
+}
+
+// Encapsulates an ES query and the Keys it requires for evaluation
 type Template struct {
 	Template template.Template
 	Keys     []string
@@ -164,15 +216,16 @@ func extractKeys(container model.LdpContainer, keys []string) ([]KvPair, error) 
 
 	for propKey, propVal := range container.PassProperties() {
 		for _, key := range keys {
-			if !strings.HasSuffix(propKey, key) {
+			k := Key(key)
+			if !strings.HasSuffix(propKey, k.String()) {
 				continue
 			} else {
 				for _, value := range propVal {
 					if pairs, exists := extractedKvps[key]; exists {
-						extractedKvps[key] = append(pairs, KvPair{key, value})
+						extractedKvps[key] = append(pairs, KvPair{Key(key), value})
 
 					} else {
-						extractedKvps[key] = []KvPair{{key, value}}
+						extractedKvps[key] = []KvPair{{Key(key), value}}
 					}
 				}
 			}
@@ -254,7 +307,7 @@ func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 			e.context = fmt.Sprintf("'%s' returned unexpected status code '%d' (%s)", query, res.StatusCode, res.Status)
 			err = e
 		}
-
+		log.Printf("executed query %s with result %s", query, err.Error())
 		return Match{}, err
 	}
 
@@ -278,6 +331,8 @@ func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 		HitCount: hits.Hits.Total,
 	}
 
+	log.Printf("executed query %s with result %v", query, m)
+
 	if m.HitCount == 0 {
 		return m, nil
 	}
@@ -286,7 +341,6 @@ func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 		m.MatchingUris = append(m.MatchingUris, hit.Source.Id)
 	}
 
-	//log.Printf("executed query %s with result %v", query, m)
 	// m.PassUri and m.PassType are provided by the caller
 	return m, nil
 }

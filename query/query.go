@@ -27,6 +27,9 @@ func (e Error) Unwrap() error {
 }
 
 func (e Error) Error() string {
+	if e.wrapped == nil {
+		return fmt.Sprintf("%s", e.context)
+	}
 	return fmt.Sprintf("%s: %s", e.wrapped.Error(), e.context)
 }
 
