@@ -107,31 +107,11 @@ func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(re
 			}
 		}
 
-		var (
-			template Template
-			err      error
-		)
-
-		if template, err = tmplBuilder.asTemplate(); err != nil {
+		if template, err := tmplBuilder.asTemplate(); err != nil {
 			return err
+		} else {
+			return template.Execute(container, handler)
 		}
-
-		//return template.Execute(container, func(result interface{}) error {
-		//	if match, ok := result.(Match); !ok {
-		//		return Error{
-		//			ErrTypeCast,
-		//			fmt.Sprintf("expected result to be a Match, but was %T", result),
-		//		}
-		//	} else {
-		//		// ought to make some kind of assertion of our expectations
-		//		if match.HitCount != 1 {
-		//			log.Printf("unexpected number of matches for %s: %d (query url was %s)", match.PassUri, match.HitCount, match.QueryUrl)
-		//		}
-		//	}
-		//	// where we need to return true
-		//	return nil
-		//})
-		return template.Execute(container, handler)
 
 	//case Or:
 	//	// boolean or the results from each child; we can short circuit on the first true value
