@@ -10,6 +10,7 @@ import (
 	"dupe-checker/retrieve"
 	"dupe-checker/visit"
 	"embed"
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"log"
@@ -39,8 +40,11 @@ var err error
 //go:embed *.ttl
 var ttlResources embed.FS
 
-//go:embed queryplan.json
-var queryPlan string
+//go:embed queryplan-simplejournal.json
+var queryPlanSimpleJournal string
+
+//go:embed queryplan-orjournal.json
+var queryPlanOrJournal string
 
 func TestMain(m *testing.M) {
 
@@ -144,15 +148,74 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func Test_FindDuplicateJournal(t *testing.T) {
+func Test_FindDuplicateJournalSimple(t *testing.T) {
+	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlanSimpleJournal)["http://oapass.org/ns/pass#Journal"]
+	handlerExecuted := false
+	potentialDuplicates := map[string]int{}
+	times := 0
 
+	matchHandler := func(result interface{}) (bool, error) {
+		match := result.(query.Match)
+		handlerExecuted = true
+		times++
+		for _, matchingUri := range match.MatchingUris {
+			if matchingUri == match.PassUri {
+				continue
+			}
+			if _, contains := potentialDuplicates[matchingUri]; contains {
+				potentialDuplicates[matchingUri]++
+			} else {
+				potentialDuplicates[matchingUri] = 1
+			}
+		}
+		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
+		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
+		// duplicate)
+	}
+	executeJournalQueryPlan(t, journalQueryPlan, matchHandler)
+	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
+	assert.Equal(t, 2, times)       // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
+	assert.Equal(t, 2, len(potentialDuplicates))
+}
+
+func Test_FindDuplicateJournalOr(t *testing.T) {
+	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlanOrJournal)["http://oapass.org/ns/pass#Journal"]
+	handlerExecuted := false
+	times := 0
+	potentialDuplicates := map[string]int{}
+
+	// matchHandler is executed once for *each* query
+	//  - we always expect at least one result, because the query that looks for duplicates will find at least the
+	//    original resource
+	//  - any matches beyond that are considered potential duplicates
+	matchHandler := func(result interface{}) (bool, error) {
+		match := result.(query.Match)
+		handlerExecuted = true
+		times++
+		for _, matchingUri := range match.MatchingUris {
+			if matchingUri == match.PassUri {
+				continue
+			}
+			if _, contains := potentialDuplicates[matchingUri]; contains {
+				potentialDuplicates[matchingUri]++
+			} else {
+				potentialDuplicates[matchingUri] = 1
+			}
+		}
+		return false, nil // we return true here because in an 'or' scenario - which we aren't in for this test
+		// - we could short-circuit the plan, because we found three hits for the container (i.e., there are two
+		// duplicates)
+	}
+	executeJournalQueryPlan(t, journalQueryPlan, matchHandler)
+	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
+	assert.Equal(t, 3, len(potentialDuplicates)) // we expect three potential duplicates
+	assert.Equal(t, 3, times)                    // the match handler executed once for each journal TODO verify this is correct behavior when we are returning false from the handler.
+}
+
+func executeJournalQueryPlan(t *testing.T, journalQueryPlan query.Plan, matchHandler func(result interface{}) (bool, error)) {
 	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "Test_FindDuplicateJournal")
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
-
-	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlan)["http://oapass.org/ns/pass#Journal"]
-	queryExecuted := false
-	timesExecuted := 0
 
 	visitor := visit.New(retriever, maxReq)
 	controller := visitController{}
@@ -167,23 +230,16 @@ func Test_FindDuplicateJournal(t *testing.T) {
 		if isPass, passType := c.IsPassResource(); isPass && passType == "http://oapass.org/ns/pass#Journal" {
 			// note that if the container URI has been flagged as a duplicate in a previous invocation, then this
 			// invocation is redundant
-			journalQueryPlan.Execute(c, func(result interface{}) (bool, error) {
-				match := result.(query.Match)
-				assert.Equal(t, 2, match.HitCount)
-				queryExecuted = true
-				timesExecuted++
-				return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-				// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
-				// duplicate)
-			})
+			if _, err := journalQueryPlan.Execute(c, matchHandler); err != nil {
+				// allow for errors where keys cannot be extracted, this is to be expected with our tests
+				if !errors.Is(err, query.ErrMissingRequiredKey) {
+					assert.Failf(t, "Error performing query: %s", err.Error())
+				}
+			}
 		}
 	})
 
 	controller.begin(visitor, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), visit.AcceptAllFilter, visit.AcceptAllFilter)
-
-	assert.True(t, queryExecuted)     // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
-	assert.Equal(t, 2, timesExecuted) // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
-
 }
 
 type visitController struct {
