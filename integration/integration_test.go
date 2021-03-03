@@ -164,12 +164,15 @@ func Test_FindDuplicateJournal(t *testing.T) {
 	controller.containerHandler(func(c model.LdpContainer) {
 		log.Printf("Container: %s (%s)", c.Uri(), c.PassType())
 		if isPass, passType := c.IsPassResource(); isPass && passType == "http://oapass.org/ns/pass#Journal" {
+			// note that if the container URI has been flagged as a duplicate in a previous invocation, then this
+			// invocation is redundant
 			journalQueryPlan.Execute(c, func(result interface{}) (bool, error) {
 				match := result.(query.Match)
 				assert.Equal(t, 2, match.HitCount)
 				queryExecuted = true
-				return true, nil // we return true here because in an 'or' scenario - which we aren't in - we could
-				// short-circuit the plan, because we found two hits for the container (i.e., there's a duplicate)
+				return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
+				// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
+				// duplicate)
 			})
 		}
 	})
