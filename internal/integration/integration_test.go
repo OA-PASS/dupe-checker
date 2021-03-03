@@ -181,7 +181,7 @@ func Test_FindDuplicateJournal(t *testing.T) {
 
 	controller.begin(visitor, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), visit.AcceptAllFilter, visit.AcceptAllFilter)
 
-	assert.True(t, queryExecuted)     // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan
+	assert.True(t, queryExecuted)     // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
 	assert.Equal(t, 2, timesExecuted) // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
 
 }
