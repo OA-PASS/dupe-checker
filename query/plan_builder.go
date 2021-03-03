@@ -124,6 +124,17 @@ func (pb *planBuilderImpl) Execute(container model.LdpContainer, handler func(re
 			}
 		}
 
+		// if this plan has any templates (e.g. we have a plan that nests an or within an or, and the parent or has
+		// templates, they should be processed.
+
+		for _, template := range pb.templates {
+			shortCircuit, err := executeTemplate(template, handler, container)
+			result = result || shortCircuit
+			if result {
+				return result, err
+			}
+		}
+
 		return result, lastErr
 	default:
 		panic(fmt.Sprintf("%T@%p: operator %v unsupported", pb, pb, pb.oper))
@@ -147,19 +158,21 @@ func executeTemplate(tmplBuilder *tmplBuilderImpl, handler func(result interface
 }
 
 func executeInternal(pb *planBuilderImpl, container model.LdpContainer, handler func(result interface{}) (bool, error)) (bool, error) {
+	var result bool
+	var lastErr error
+
 	for _, childPlan := range pb.children {
-		return executeInternal(childPlan, container, handler)
+		result, lastErr = executeInternal(childPlan, container, handler)
 	}
 
 	if len(pb.templates) == 0 {
 		// TODO should be an error to get to the bottom of a tree and encounter no templates
-		return false, Error{}
+		return result, lastErr
 	}
 
 	switch pb.oper {
 	case Or:
-		var result bool
-		var lastErr error
+
 		// we execute each template until we have executed them all or until one returns true
 		for _, t := range pb.templates {
 			if shortCircuit, err := executeTemplate(t, handler, container); shortCircuit || err != nil {
