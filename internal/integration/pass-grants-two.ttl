@@ -1,0 +1,33 @@
+@prefix premis:  <http://www.loc.gov/premis/rdf/v1#> .
+@prefix test:  <info:fedora/test/> .
+@prefix pass:  <http://oapass.org/ns/pass#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix webac:  <http://fedora.info/definitions/v4/webac#> .
+@prefix acl:  <http://www.w3.org/ns/auth/acl#> .
+@prefix xsi:  <http://www.w3.org/2001/XMLSchema-instance> .
+@prefix xmlns:  <http://www.w3.org/2000/xmlns/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix fedora:  <http://fedora.info/definitions/v4/repository#> .
+@prefix xml:  <http://www.w3.org/XML/1998/namespace> .
+@prefix dcjsonld:  <http://dataconservancy.org/ns/jsonld#> .
+@prefix ebucore:  <http://www.ebu.ch/metadata/ontologies/ebucore/ebucore#> .
+@prefix ldp:  <http://www.w3.org/ns/ldp#> .
+@prefix xs:  <http://www.w3.org/2001/XMLSchema> .
+@prefix fedoraconfig:  <http://fedora.info/definitions/v4/config#> .
+@prefix foaf:  <http://xmlns.com/foaf/0.1/> .
+@prefix dc:  <http://purl.org/dc/elements/1.1/> .
+@prefix authz:  <http://fedora.info/definitions/v4/authorization#> .
+
+<>
+        rdf:type               pass:Grant ;
+        pass:primaryFunder     <https://pass.jhu.edu/fcrepo/rest/funders/da/ac/db/05/daacdb05-8aac-4298-bba7-e72c762eed56> ;
+        pass:startDate         "2008-07-01T00:00:00.000Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ;
+        pass:awardDate         "2008-12-08T00:00:00.000Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ;
+        pass:localKey          "johnshopkins.edu:grant:104592"^^<http://www.w3.org/2001/XMLSchema#string> ;
+        pass:pi                <https://pass.jhu.edu/fcrepo/rest/users/5c/5b/d5/63/5c5bd563-8b32-4bb7-bf40-a8b422265da0> ;
+        dcjsonld:hasContext    <https://oa-pass.github.io/pass-data-model/src/main/resources/context-3.2.jsonld> ;
+        pass:directFunder      <https://pass.jhu.edu/fcrepo/rest/funders/15/ec/80/14/15ec8014-3425-42d1-82ff-fff24195af9b> ;
+        pass:projectName       "Fogarty International Clinical Research Scholars Support Center @ Vanderbilt-AAMC"^^<http://www.w3.org/2001/XMLSchema#string> ;
+        pass:awardNumber       "VUMC34801"^^<http://www.w3.org/2001/XMLSchema#string> ;
+        pass:awardStatus       "terminated"^^<http://www.w3.org/2001/XMLSchema#string> ;
+        pass:endDate           "2010-04-30T00:00:00.000Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
