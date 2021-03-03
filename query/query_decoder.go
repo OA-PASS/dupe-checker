@@ -28,11 +28,15 @@ type tokenStack struct {
 	elements []*tokenElement
 }
 
-type ConfigDecoder interface {
+type PlanDecoder interface {
 	Decode(config string) map[string]Plan
 }
 
 type decoder struct{}
+
+func NewPlanDecoder() PlanDecoder {
+	return decoder{}
+}
 
 func (decoder) Decode(config string) map[string]Plan {
 	plans := make(map[string]Plan)

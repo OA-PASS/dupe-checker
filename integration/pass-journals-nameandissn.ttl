@@ -1,0 +1,9 @@
+@prefix ldp: <http://www.w3.org/ns/ldp#> .
+@prefix ns0: <http://dataconservancy.org/ns/jsonld#> .
+@prefix ns1: <http://oapass.org/ns/pass#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<> a <http://oapass.org/ns/pass#Journal> ;
+  ns0:hasContext <https://oa-pass.github.io/pass-data-model/src/main/resources/context-3.2.jsonld> ;
+  ns1:journalName "Community dentistry and oral epidemiology"^^xsd:string ;
+  ns1:issn "Online:1600-0528"^^xsd:string, "Print:0301-5661"^^xsd:string .

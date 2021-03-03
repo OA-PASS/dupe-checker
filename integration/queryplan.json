@@ -1,0 +1,10 @@
+{
+  "http://oapass.org/ns/pass#Journal": {
+    "query": {
+      "keys": [
+        "nlmta"
+      ],
+      "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+    }
+  }
+}
