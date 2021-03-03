@@ -55,6 +55,9 @@ var queryPlanFunder string
 //go:embed queryplan-grant.json
 var queryPlanGrant string
 
+//go:embed queryplan-repocopy.json
+var queryPlanRepoCopy string
+
 func TestMain(m *testing.M) {
 
 	httpClient = http.Client{
@@ -155,6 +158,37 @@ func TestMain(m *testing.M) {
 
 	// call flag.Parse() here if TestMain uses flags
 	os.Exit(m.Run())
+}
+
+func Test_FindDuplicateRepoCopy(t *testing.T) {
+	queryPlan := query.NewPlanDecoder().Decode(queryPlanRepoCopy)["http://oapass.org/ns/pass#RepositoryCopy"]
+	log.Printf("Query plan: %s", queryPlan)
+	handlerExecuted := false
+	potentialDuplicates := map[string]int{}
+	times := 0
+
+	matchHandler := func(result interface{}) (bool, error) {
+		match := result.(query.Match)
+		handlerExecuted = true
+		times++
+		for _, matchingUri := range match.MatchingUris {
+			if matchingUri == match.PassUri {
+				continue
+			}
+			if _, contains := potentialDuplicates[matchingUri]; contains {
+				potentialDuplicates[matchingUri]++
+			} else {
+				potentialDuplicates[matchingUri] = 1
+			}
+		}
+		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
+		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
+		// duplicate)
+	}
+	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "repositoryCopies"), "http://oapass.org/ns/pass#RepositoryCopy", matchHandler)
+	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 3, times)
+	assert.Equal(t, 3, len(potentialDuplicates)) // for the three duplicate RepoCopy resources
 }
 
 func Test_FindDuplicateGrant(t *testing.T) {

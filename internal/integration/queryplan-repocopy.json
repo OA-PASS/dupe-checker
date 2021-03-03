@@ -1,0 +1,23 @@
+{
+  "http://oapass.org/ns/pass#RepositoryCopy": {
+    "or": [
+      {
+        "query": {
+          "keys": [
+            "publication",
+            "repository"
+          ],
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+        }
+      },
+      {
+        "query": {
+          "keys": [
+            "accessUrl"
+          ],
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+        }
+      }
+    ]
+  }
+}
