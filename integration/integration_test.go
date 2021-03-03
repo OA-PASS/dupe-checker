@@ -163,13 +163,15 @@ func Test_FindDuplicateJournal(t *testing.T) {
 	})
 	controller.containerHandler(func(c model.LdpContainer) {
 		log.Printf("Container: %s (%s)", c.Uri(), c.PassType())
-		journalQueryPlan.Execute(c, func(result interface{}) (bool, error) {
-			match := result.(query.Match)
-			assert.Equal(t, 2, match.HitCount)
-			queryExecuted = true
-			return true, nil // we return true here because in an 'or' scenario - which we aren't in - we could
-			// short-circuit the plan, because we found two hits for the container (i.e., there's a duplicate)
-		})
+		if isPass, passType := c.IsPassResource(); isPass && passType == "http://oapass.org/ns/pass#Journal" {
+			journalQueryPlan.Execute(c, func(result interface{}) (bool, error) {
+				match := result.(query.Match)
+				assert.Equal(t, 2, match.HitCount)
+				queryExecuted = true
+				return true, nil // we return true here because in an 'or' scenario - which we aren't in - we could
+				// short-circuit the plan, because we found two hits for the container (i.e., there's a duplicate)
+			})
+		}
 	})
 
 	controller.begin(visitor, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), visit.AcceptAllFilter, visit.AcceptAllFilter)
