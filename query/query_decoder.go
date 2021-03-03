@@ -9,12 +9,14 @@ import (
 )
 
 var (
-	queryT = token("query")
-	orT    = token("or")
-	andT   = token("and")
-	keysT  = token("keys")
-	qT     = token("q")
-	nilT   = token("nil")
+	queryT  = token("query")
+	orT     = token("or")
+	orArray = token("pseudo-orarray")
+	orObj   = token("pseudo-orobj")
+	andT    = token("and")
+	keysT   = token("keys")
+	qT      = token("q")
+	nilT    = token("nil")
 )
 
 type token string
@@ -61,23 +63,47 @@ func (decoder) Decode(config string) map[string]Plan {
 		case json.Delim:
 			switch jsonToken.(json.Delim).String() {
 
-			case "{", "[":
+			case "{":
+				switch e := stack.peek(); e.t {
+				case orT:
+					stack.push(orObj, nil)
+				}
+			case "[":
+				switch e := stack.peek(); e.t {
+				case orT:
+					stack.push(orArray, nil)
+				}
 			case "}", "]":
 				if stack.size() > 0 {
 					switch t, b := stack.pop(); t {
+					case orArray:
+						// if we have the matching brace for closing an 'or' array, then pop the stack again, retrieving
+						// the 'or' builder, and build it.  We know we won't be seeing any more query templates for this builder
+						if jsonToken.(json.Delim).String() == "]" {
+							_, builder := stack.pop()
+							if p, e := builder.Build(); e != nil {
+								panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+							} else {
+								log.Printf("built %T@%p", p, p)
+							}
+						}
+					case orObj:
+						// if we have the matching brace for closing an 'or' object, then pop the stack again, retrieving
+						// the 'or' builder, and build it.  We know we won't be seeing any more query templates for this builder
+						if jsonToken.(json.Delim).String() == "}" {
+							_, builder := stack.pop()
+							if p, e := builder.Build(); e != nil {
+								panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+							} else {
+								log.Printf("built %T@%p", p, p)
+							}
+						}
 					case orT:
-						// close the active query template, and clear the active state of the parent builder
-						//if p, e := (b).(*planBuilderImpl).active.Build(); e != nil {
+						//if p, e := b.Build(); e != nil {
 						//	panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 						//} else {
-						//	log.Printf("built %T@%p", (b).(*planBuilderImpl).active, (b).(*planBuilderImpl).active)
-						//	(b).(*planBuilderImpl).active = nil
+						//	log.Printf("built %T@%p", p, p)
 						//}
-						if p, e := b.Build(); e != nil {
-							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
-						} else {
-							log.Printf("built %T@%p", p, p)
-						}
 					case queryT:
 						if p, e := b.Build(); e != nil {
 							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
@@ -111,8 +137,12 @@ func (decoder) Decode(config string) map[string]Plan {
 				// or 'and', then we need to build and attach a PlanBuilder for handling *this* 'or's operations to the
 				// previous 'or's plan builder (in the case of a nested operation), or the root PlanBuilder.
 				switch e := stack.peek(); e.t {
-				case orT:
-					pb = (*e.b).(PlanBuilder).Or()
+				case orArray, orObj:
+					pseudoElement := stack.popE()
+					orElement := stack.popE()
+					pb = (*orElement.b).(PlanBuilder).Or()
+					stack.pushE(orElement)
+					stack.pushE(pseudoElement)
 				default:
 					pb = passTypeBuilder.Or()
 				}
