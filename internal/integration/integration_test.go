@@ -220,13 +220,13 @@ func executeJournalQueryPlan(t *testing.T, journalQueryPlan query.Plan, matchHan
 	visitor := visit.New(retriever, maxReq)
 	controller := visitController{}
 	controller.errorHandler(func(e error) {
-		log.Printf("Error: %s", e.Error())
+		log.Printf(">> Error: %s", e.Error())
 	})
 	controller.eventHandler(func(e visit.Event) {
-		log.Printf("Event: %v", e)
+		log.Printf(">> Event: %v", e)
 	})
 	controller.containerHandler(func(c model.LdpContainer) {
-		log.Printf("Container: %s (%s)", c.Uri(), c.PassType())
+		log.Printf(">> Container: %s (%s)", c.Uri(), c.PassType())
 		if isPass, passType := c.IsPassResource(); isPass && passType == "http://oapass.org/ns/pass#Journal" {
 			// note that if the container URI has been flagged as a duplicate in a previous invocation, then this
 			// invocation is redundant
