@@ -152,6 +152,7 @@ func Test_FindDuplicateJournal(t *testing.T) {
 
 	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlan)["http://oapass.org/ns/pass#Journal"]
 	queryExecuted := false
+	timesExecuted := 0
 
 	visitor := visit.New(retriever, maxReq)
 	controller := visitController{}
@@ -170,6 +171,7 @@ func Test_FindDuplicateJournal(t *testing.T) {
 				match := result.(query.Match)
 				assert.Equal(t, 2, match.HitCount)
 				queryExecuted = true
+				timesExecuted++
 				return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
 				// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
 				// duplicate)
@@ -179,7 +181,8 @@ func Test_FindDuplicateJournal(t *testing.T) {
 
 	controller.begin(visitor, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), visit.AcceptAllFilter, visit.AcceptAllFilter)
 
-	assert.True(t, queryExecuted)
+	assert.True(t, queryExecuted)     // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan
+	assert.Equal(t, 2, timesExecuted) // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
 
 }
 
