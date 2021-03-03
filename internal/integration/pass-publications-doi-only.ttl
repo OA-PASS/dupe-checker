@@ -1,0 +1,11 @@
+@prefix ldp: <http://www.w3.org/ns/ldp#> .
+@prefix ns0: <http://oapass.org/ns/pass#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ns1: <http://fedora.info/definitions/v4/repository#> .
+@prefix ns2: <http://dataconservancy.org/ns/jsonld#> .
+
+<> a <http://oapass.org/ns/pass#Publication> ;
+  ns0:doi "10.1097/MD.0000000000010043"^^xsd:string ;
+  ns0:volume "97"^^xsd:string ;
+  ns2:hasContext <https://oa-pass.github.io/pass-data-model/src/main/resources/context-2.2.jsonld> ;
+  ns0:issue "9"^^xsd:string ;
