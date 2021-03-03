@@ -97,11 +97,11 @@ func TestMain(m *testing.M) {
 	// Create parent containers, http://fcrepo:8080/fcrepo/rest/journals, http://fcrepo:8080/fcrepo/rest/users, etc.
 	// Populate them with test resources.
 	// If Fedora already has a container, skip the initialization of resources for that container.
-	for _, containerName := range []string{"journals"} { //, "users", "publications", "grants", "funders", "repositoryCopies", "submissions"} {
+	for _, containerName := range []string{"journals", "users", "publications", "grants", "funders", "repositoryCopies", "submissions"} {
 		url := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, containerName)
 		req, _ := http.NewRequest("HEAD", url, nil)
 		if err := perform(req, 200); err == nil {
-			log.Printf("Container %s already exists, skipping creation", url)
+			log.Printf("Container %s already exists, skipping initialization", url)
 			continue
 		}
 		req, _ = http.NewRequest("PUT", url, nil)
