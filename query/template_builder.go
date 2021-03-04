@@ -26,6 +26,7 @@ var templateFuncs = template.FuncMap{
 		return i - 1
 	},
 	// escapes the string to be palatable for an elastic search query
+	// FIXME where is '&' in, e.g. title, getting encoded as '&amp;' in ES queries?
 	"urlqueryesc": func(query string) string {
 		return strings.ReplaceAll(url.PathEscape(query), ":", "%3F")
 	},
@@ -268,7 +269,7 @@ func extractKeys(container model.LdpContainer, keys []string) ([]KvPair, error) 
 }
 
 // Executes the provided ES query string and returns the number of hits.
-func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
+func performQuery(query string, esClient ElasticSearchClient, keys []string) (Match, error) {
 	var err error
 	var req *http.Request
 	var res *http.Response
@@ -327,8 +328,9 @@ func performQuery(query string, esClient ElasticSearchClient) (Match, error) {
 	}
 
 	m := Match{
-		QueryUrl: query,
-		HitCount: hits.Hits.Total,
+		QueryUrl:    query,
+		HitCount:    hits.Hits.Total,
+		MatchFields: keys,
 	}
 
 	log.Printf("executed query %s with result %v", query, m)
@@ -367,12 +369,16 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 		// invoke query, obtain result.
 		if match, err := performQuery(query, ElasticSearchClient{
 			http.Client{},
-		}); err != nil {
+		}, qt.Keys); err != nil {
 			return true, err
 		} else {
 			//match.PassType = container.
 			match.PassUri = container.Uri()
 			match.PassType = container.PassType()
+			match.ContainerProperties.SourceLastModified = container.LastModified()
+			match.ContainerProperties.SourceLastModifiedBy = container.LastModifiedBy()
+			match.ContainerProperties.SourceCreated = container.Created()
+			match.ContainerProperties.SourceCreatedBy = container.CreatedBy()
 
 			if _, handlerErr := handler(match); handlerErr != nil {
 				return true, handlerErr
