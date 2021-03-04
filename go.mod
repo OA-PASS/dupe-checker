@@ -3,6 +3,7 @@ module dupe-checker
 go 1.16
 
 require (
+	github.com/datainq/xml-date-time v0.0.0-20170820214645-2292f08baa38
 	github.com/knakk/rdf v0.0.0-20190304171630-8521bf4c5042
 	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/piprate/json-gold v0.3.0

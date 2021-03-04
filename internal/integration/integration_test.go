@@ -6,18 +6,21 @@ import (
 	"bytes"
 	"dupe-checker/env"
 	"dupe-checker/model"
+	"dupe-checker/persistence"
 	"dupe-checker/query"
 	"dupe-checker/retrieve"
 	"dupe-checker/visit"
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -31,43 +34,53 @@ var serviceDeps = map[string]bool{
 	"elasticsearch:9200": false,
 }
 
-var httpClient http.Client
+var (
+	httpClient  http.Client
+	environment = env.New()
+	err         error
 
-var environment = env.New()
+	//go:embed *.ttl
+	ttlResources embed.FS
 
-var err error
+	//go:embed queryplan-simplejournal.json
+	queryPlanSimpleJournal string
 
-//go:embed *.ttl
-var ttlResources embed.FS
+	//go:embed queryplan-orjournal.json
+	queryPlanOrJournal string
 
-//go:embed queryplan-simplejournal.json
-var queryPlanSimpleJournal string
+	//go:embed queryplan-publication.json
+	queryPlanPub string
 
-//go:embed queryplan-orjournal.json
-var queryPlanOrJournal string
+	//go:embed queryplan-funder.json
+	queryPlanFunder string
 
-//go:embed queryplan-publication.json
-var queryPlanPub string
+	//go:embed queryplan-grant.json
+	queryPlanGrant string
 
-//go:embed queryplan-funder.json
-var queryPlanFunder string
+	//go:embed queryplan-repocopy.json
+	queryPlanRepoCopy string
 
-//go:embed queryplan-grant.json
-var queryPlanGrant string
+	//go:embed queryplan-user.json
+	queryPlanUser string
 
-//go:embed queryplan-repocopy.json
-var queryPlanRepoCopy string
+	//go:embed queryplan-submission.json
+	queryPlanSubmission string
 
-//go:embed queryplan-user.json
-var queryPlanUser string
+	//go:embed queryplan-publicationsandusers.json
+	queryPlanPubsAndUsers string
 
-//go:embed queryplan-submission.json
-var queryPlanSubmission string
+	//go:embed queryplan-alltherest.json
+	queryPlanAllTheRest string
+)
 
 func TestMain(m *testing.M) {
 
-	httpClient = http.Client{
-		Timeout: 10 * time.Second,
+	if timeout, err := strconv.Atoi(environment.HttpTimeoutMs); err != nil {
+		panic("Invalid integer value for HTTP_TIMEOUT_MS: " + err.Error())
+	} else {
+		httpClient = http.Client{
+			Timeout: time.Duration(timeout) * time.Millisecond,
+		}
 	}
 
 	// Fedora, ElasticSearch, ActiveMQ and the Indexer all need to be up.
@@ -179,6 +192,269 @@ func Test_DuplicateQuerySuite(t *testing.T) {
 	})
 }
 
+func Test_FindDuplicatePublicationsAndUsers(t *testing.T) {
+	_ = &sqlite3.SQLiteDriver{}
+
+	store, _ := persistence.NewSqlLiteStore("file:/tmp/pubsanduserstest.db?mode=rwc&cache=shared", persistence.SqliteParams{
+		MaxIdleConn: 4,
+		MaxOpenConn: 4,
+	}, nil)
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	plan := query.NewPlanDecoder().Decode(queryPlanPubsAndUsers)
+	log.Printf("Query plan: %s", plan)
+
+	// store candidate duplicate uris and their type in the database
+	matchHandler := func(result interface{}) (bool, error) {
+		candidateDupes := map[string]int{}
+		match := result.(query.Match)
+		for _, matchingUri := range match.MatchingUris {
+			if matchingUri == match.PassUri {
+				continue
+			}
+			if _, contains := candidateDupes[matchingUri]; contains {
+				candidateDupes[matchingUri]++
+			} else {
+				candidateDupes[matchingUri] = 1
+			}
+		}
+
+		for candidateDupe, _ := range candidateDupes {
+			if err := store.StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, persistence.DupeContainerAttributes{
+				SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
+				SourceCreated:        match.ContainerProperties.SourceCreated,
+				SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
+				SourceLastModified:   match.ContainerProperties.SourceLastModified,
+			}); err != nil && !errors.Is(err, sqlite3.ErrConstraint) {
+				assert.Failf(t, "%s", err.Error())
+			}
+		}
+
+		return false, nil
+	}
+
+	// descend into all containers that are not pass resources or acls
+	filterFn := func(c model.LdpContainer) bool {
+		if visit.IsAclResource(c) {
+			// don't descend acl resources
+			return false
+		}
+
+		if visit.IsPassResource(c) {
+			// don't descend pass resources (TODO revisit this re files)
+			return false
+		}
+
+		// if the container is the root container, publications container, or users container, descend
+		// otherwise, don't
+		switch {
+		case strings.HasPrefix(c.Uri(), fmt.Sprintf("%s/publications", environment.FcrepoBaseUri)):
+			fallthrough
+		case strings.HasPrefix(c.Uri(), fmt.Sprintf("%s/users", environment.FcrepoBaseUri)):
+			fallthrough
+		case c.Uri() == fmt.Sprintf("%s/", environment.FcrepoBaseUri):
+			fallthrough
+		case c.Uri() == fmt.Sprintf("%s", environment.FcrepoBaseUri):
+			return true
+		default:
+			return false
+		}
+	}
+
+	// accept all pass resources for processing
+	acceptFn := func(c model.LdpContainer) bool {
+		// accept PASS resources for processing (i.e. accepted resources will be sent to the visitor.Containers channel)
+		return visit.IsPassResource(c)
+	}
+
+	// process accepted containers (i.e. PASS resources) by querying for their duplicates
+	containerHandler := func(c model.LdpContainer) {
+		var queryPlan query.Plan
+
+		// Select the query plan based on the type of resource
+		if isPass, passType := c.IsPassResource(); isPass {
+			switch passType {
+			case model.PassTypeUser:
+				queryPlan = plan[model.PassTypeUser]
+			case model.PassTypePublication:
+				queryPlan = plan[model.PassTypePublication]
+			default:
+				panic("Unsupported type " + passType)
+			}
+		} else {
+			panic(fmt.Sprintf("Container not a PASS resource %v", c))
+		}
+
+		// Execute the query and hand the result off to the match handler
+		// The match handler is responsible for processing the result (i.e. determining if there are duplicates and
+		// persisting them in the database).
+		if _, err := queryPlan.Execute(c, matchHandler); err != nil {
+			// allow for errors where keys cannot be extracted, this is to be expected with our tests
+			if !errors.Is(err, query.ErrMissingRequiredKey) {
+				log.Printf("Error performing query: %s", err.Error())
+			}
+		}
+	}
+
+	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "Test_FindDuplicatePublicationsAndUsers")
+	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
+	assert.Nil(t, err)
+
+	visitor := visit.New(retriever, maxReq)
+	controller := visitController{}
+	controller.errorHandler(func(e error) {
+		log.Printf(">> Error: %s", e.Error())
+	})
+	controller.eventHandler(func(e visit.Event) {
+		log.Printf(">> Event: %v", e)
+	})
+
+	controller.containerHandler(containerHandler)
+
+	controller.begin(visitor, environment.FcrepoBaseUri, acceptFn, filterFn)
+}
+
+func Test_FindDuplicateAllTheRest(t *testing.T) {
+	_ = &sqlite3.SQLiteDriver{}
+
+	store, _ := persistence.NewSqlLiteStore("file:/tmp/pubsanduserstest.db?mode=rwc&cache=shared", persistence.SqliteParams{
+		MaxIdleConn: 4,
+		MaxOpenConn: 4,
+	}, nil)
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	plan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)
+	log.Printf("Query plan: %s", plan)
+
+	// store candidate duplicate uris and their type in the database
+	matchHandler := func(result interface{}) (bool, error) {
+		candidateDupes := map[string]int{}
+		match := result.(query.Match)
+		for _, matchingUri := range match.MatchingUris {
+			if matchingUri == match.PassUri {
+				continue
+			}
+			if _, contains := candidateDupes[matchingUri]; contains {
+				candidateDupes[matchingUri]++
+			} else {
+				candidateDupes[matchingUri] = 1
+			}
+		}
+
+		for candidateDupe, _ := range candidateDupes {
+			if err := store.StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, persistence.DupeContainerAttributes{
+				SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
+				SourceCreated:        match.ContainerProperties.SourceCreated,
+				SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
+				SourceLastModified:   match.ContainerProperties.SourceLastModified,
+			}); err != nil && !errors.Is(err, sqlite3.ErrConstraint) {
+				assert.Failf(t, "%s", err.Error())
+			}
+		}
+
+		return false, nil
+	}
+
+	// descend into all containers that are not pass resources or acls
+	filterFn := func(c model.LdpContainer) bool {
+		if visit.IsAclResource(c) {
+			// don't descend acl resources
+			return false
+		}
+
+		if visit.IsPassResource(c) {
+			// don't descend pass resources (TODO revisit this re files)
+			return false
+		}
+
+		// if the container is the root container, funders, grants, repositoryCopies, submissions, or journals
+		// container, descend.
+		// otherwise, don't
+		switch {
+		case strings.HasPrefix(c.Uri(), fmt.Sprintf("%s/funders", environment.FcrepoBaseUri)):
+			fallthrough
+		case strings.HasPrefix(c.Uri(), fmt.Sprintf("%s/grants", environment.FcrepoBaseUri)):
+			fallthrough
+		case strings.HasPrefix(c.Uri(), fmt.Sprintf("%s/repositoryCopies", environment.FcrepoBaseUri)):
+			fallthrough
+		case strings.HasPrefix(c.Uri(), fmt.Sprintf("%s/submissions", environment.FcrepoBaseUri)):
+			fallthrough
+		case strings.HasPrefix(c.Uri(), fmt.Sprintf("%s/journals", environment.FcrepoBaseUri)):
+			fallthrough
+		case c.Uri() == fmt.Sprintf("%s/", environment.FcrepoBaseUri):
+			fallthrough
+		case c.Uri() == fmt.Sprintf("%s", environment.FcrepoBaseUri):
+			return true
+		default:
+			return false
+		}
+	}
+
+	// accept all pass resources for processing
+	acceptFn := func(c model.LdpContainer) bool {
+		// accept PASS resources for processing (i.e. accepted resources will be sent to the visitor.Containers channel)
+		return visit.IsPassResource(c)
+	}
+
+	// process accepted containers (i.e. PASS resources) by querying for their duplicates
+	containerHandler := func(c model.LdpContainer) {
+		var queryPlan query.Plan
+
+		// Select the query plan based on the type of resource
+		if isPass, passType := c.IsPassResource(); isPass {
+			switch passType {
+			case model.PassTypeFunder:
+				fallthrough
+			case model.PassTypeGrant:
+				fallthrough
+			case model.PassTypeJournal:
+				fallthrough
+			case model.PassTypeRepositoryCopy:
+				fallthrough
+			case model.PassTypeSubmission:
+				queryPlan = plan[passType]
+			default:
+				panic("Unsupported type " + passType)
+			}
+		} else {
+			panic(fmt.Sprintf("Container not a PASS resource %v", c))
+		}
+
+		// Execute the query and hand the result off to the match handler
+		// The match handler is responsible for processing the result (i.e. determining if there are duplicates and
+		// persisting them in the database).
+		if _, err := queryPlan.Execute(c, matchHandler); err != nil {
+			// allow for errors where keys cannot be extracted, this is to be expected with our tests
+			if !errors.Is(err, query.ErrMissingRequiredKey) {
+				log.Printf("Error performing query: %s", err.Error())
+			}
+		}
+	}
+
+	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "Test_FindDuplicateAllTheRest")
+	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
+	assert.Nil(t, err)
+
+	visitor := visit.New(retriever, maxReq)
+	controller := visitController{}
+	controller.errorHandler(func(e error) {
+		log.Printf(">> Error: %s", e.Error())
+	})
+	controller.eventHandler(func(e visit.Event) {
+		log.Printf(">> Event: %v", e)
+	})
+
+	controller.containerHandler(containerHandler)
+
+	controller.begin(visitor, environment.FcrepoBaseUri, acceptFn, filterFn)
+}
+
 func findDuplicateSubmission(t *testing.T) {
 	t.Parallel()
 	queryPlan := query.NewPlanDecoder().Decode(queryPlanSubmission)["http://oapass.org/ns/pass#Submission"]
@@ -205,7 +481,7 @@ func findDuplicateSubmission(t *testing.T) {
 		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
 		// duplicate)
 	}
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "submissions"), "http://oapass.org/ns/pass#Submission", matchHandler)
+	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "submissions"), "http://oapass.org/ns/pass#Submission", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 3, times)
 	assert.Equal(t, 3, len(potentialDuplicates)) // for the two duplicate User resources
@@ -237,7 +513,7 @@ func findDuplicateUser(t *testing.T) {
 		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
 		// duplicate)
 	}
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "users"), "http://oapass.org/ns/pass#User", matchHandler)
+	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "users"), "http://oapass.org/ns/pass#User", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, times)
 	assert.Equal(t, 2, len(potentialDuplicates)) // for the two duplicate User resources
@@ -269,7 +545,7 @@ func findDuplicateRepoCopy(t *testing.T) {
 		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
 		// duplicate)
 	}
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "repositoryCopies"), "http://oapass.org/ns/pass#RepositoryCopy", matchHandler)
+	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "repositoryCopies"), "http://oapass.org/ns/pass#RepositoryCopy", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 3, times)
 	assert.Equal(t, 3, len(potentialDuplicates)) // for the three duplicate RepoCopy resources
@@ -301,7 +577,7 @@ func findDuplicateGrant(t *testing.T) {
 		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
 		// duplicate)
 	}
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "grants"), "http://oapass.org/ns/pass#Grant", matchHandler)
+	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "grants"), "http://oapass.org/ns/pass#Grant", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, times)
 	assert.Equal(t, 2, len(potentialDuplicates)) // for the two duplicate Funder resources
@@ -333,7 +609,7 @@ func findDuplicateFunder(t *testing.T) {
 		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
 		// duplicate)
 	}
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "funders"), "http://oapass.org/ns/pass#Funder", matchHandler)
+	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "funders"), "http://oapass.org/ns/pass#Funder", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, times)
 	assert.Equal(t, 2, len(potentialDuplicates)) // for the two duplicate Funder resources
@@ -365,7 +641,7 @@ func findDuplicatePublication(t *testing.T) {
 		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
 		// duplicate)
 	}
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "publications"), "http://oapass.org/ns/pass#Publication", matchHandler)
+	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "publications"), "http://oapass.org/ns/pass#Publication", matchHandler, nil)
 	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 5, times)                    // TODO unexplained
 	assert.Equal(t, 4, len(potentialDuplicates)) // for the four duplicate Publication resources
@@ -396,7 +672,7 @@ func findDuplicateJournalSimple(t *testing.T) {
 		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
 		// duplicate)
 	}
-	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler)
+	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
 	assert.Equal(t, 2, times)       // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
 	assert.Equal(t, 2, len(potentialDuplicates))
@@ -431,13 +707,13 @@ func findDuplicateJournalOr(t *testing.T) {
 		// - we could short-circuit the plan, because we found three hits for the container (i.e., there are two
 		// duplicates)
 	}
-	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler)
+	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler, nil)
 	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
 	assert.Equal(t, 3, len(potentialDuplicates)) // we expect three potential duplicates
 	assert.Equal(t, 3, times)                    // the match handler executed once for each journal TODO verify this is correct behavior when we are returning false from the handler.
 }
 
-func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passType string, matchHandler func(result interface{}) (bool, error)) {
+func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passType string, matchHandler func(result interface{}) (bool, error), containerHandler func(model.LdpContainer)) {
 	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "test_findDuplicateJournal")
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
@@ -450,7 +726,17 @@ func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passT
 	controller.eventHandler(func(e visit.Event) {
 		log.Printf(">> Event: %v", e)
 	})
-	controller.containerHandler(func(c model.LdpContainer) {
+	if containerHandler == nil {
+		controller.containerHandler(defaultContainerHandler(t, queryPlan, passType, matchHandler))
+	} else {
+		controller.containerHandler(containerHandler)
+	}
+
+	controller.begin(visitor, startUri, visit.AcceptAllFilter, visit.AcceptAllFilter)
+}
+
+var defaultContainerHandler = func(t *testing.T, queryPlan query.Plan, passType string, matchHandler func(result interface{}) (bool, error)) func(c model.LdpContainer) {
+	return func(c model.LdpContainer) {
 		log.Printf(">> Container: %s (%s)", c.Uri(), c.PassType())
 		if isPass, candidate := c.IsPassResource(); isPass && candidate == passType {
 			// note that if the container URI has been flagged as a duplicate in a previous invocation, then this
@@ -462,9 +748,7 @@ func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passT
 				}
 			}
 		}
-	})
-
-	controller.begin(visitor, startUri, visit.AcceptAllFilter, visit.AcceptAllFilter)
+	}
 }
 
 type visitController struct {
