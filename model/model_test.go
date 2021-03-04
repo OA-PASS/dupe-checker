@@ -3,9 +3,11 @@ package model
 import (
 	"bytes"
 	_ "embed"
+	"github.com/knakk/rdf"
 	"github.com/piprate/json-gold/ld"
 	"github.com/stretchr/testify/assert"
 	"log"
+	"strings"
 	"testing"
 )
 
@@ -17,6 +19,16 @@ var n3User string
 
 //go:embed pass-usercontainer.n3
 var n3UserContainer string
+
+// insure '&' is not decoded to '&amp;'
+func Test_DecodeTripleWithAmperstand(t *testing.T) {
+	tripleStr := "<http://fcrepo:8080/fcrepo/rest/journals/ad/69/1a/d4/ad691ad4-ab10-4442-be2f-b21502f3bfad> <http://oapass.org/ns/pass#journalName> \"Current opinion in endocrinology & diabetes\"^^<http://www.w3.org/2001/XMLSchema#string> ."
+	if triple, err := rdf.NewTripleDecoder(strings.NewReader(tripleStr), rdf.NTriples).Decode(); err != nil {
+		assert.Failf(t, "Unable to decode triple: %s", tripleStr)
+	} else {
+		assert.True(t, strings.Contains(triple.Obj.String(), " & "), triple.Obj.String())
+	}
+}
 
 func Test_LdpContainer_SingleFunderResource(t *testing.T) {
 	c, _ := ReadContainer(n3Funder)

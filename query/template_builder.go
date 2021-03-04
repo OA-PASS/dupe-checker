@@ -6,34 +6,44 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"text/template"
 )
 
 var ErrMissingRequiredKey = errors.New("query: missing required key(s)")
 var ErrPerformingElasticSearchRequest = errors.New("query: error performing search")
 
+// escapes the string to be palatable for an elastic search query
+// FIXME where is '&' in, e.g. title, getting encoded as '&amp;' in ES queries?
+
+var urlQueryEscFunc = func(query string) string {
+	new := strings.ReplaceAll(url.PathEscape(query), ":", "%3F")
+	return strings.ReplaceAll(new, "&", "%26")
+}
+
+var incFunc = func(i int) int {
+	return i + 1
+}
+
+var decFunc = func(i int) int {
+	return i - 1
+}
+
+// returns true if the key may have multiple values, e.g. an issn or locatorId
+var isMultiFunc = func(key Key) bool {
+	return key.IsMulti()
+}
+
 var templateFuncs = template.FuncMap{
 	// The name "inc" is what the function will be called in the template text.
-	"inc": func(i int) int {
-		return i + 1
-	},
-	"dec": func(i int) int {
-		return i - 1
-	},
-	// escapes the string to be palatable for an elastic search query
-	// FIXME where is '&' in, e.g. title, getting encoded as '&amp;' in ES queries?
-	"urlqueryesc": func(query string) string {
-		return strings.ReplaceAll(url.PathEscape(query), ":", "%3F")
-	},
-	// returns true if the key may have multiple values, e.g. an issn or locatorId
-	"ismulti": func(key Key) bool {
-		return key.IsMulti()
-	},
+	"inc":         incFunc,
+	"dec":         decFunc,
+	"urlqueryesc": urlQueryEscFunc,
+	"ismulti":     isMultiFunc,
 }
 
 // A Key represents a field that is being used to match objects. Examples of Keys include 'journalName' or 'nlmta' on
@@ -222,6 +232,10 @@ func extractKeys(container model.LdpContainer, keys []string) ([]KvPair, error) 
 				continue
 			} else {
 				for _, value := range propVal {
+					// skip empty values (e.g. many Publications have an empty 'nlmta')
+					if strings.TrimSpace(value) == "" {
+						continue
+					}
 					if pairs, exists := extractedKvps[key]; exists {
 						extractedKvps[key] = append(pairs, KvPair{Key(key), value})
 
@@ -343,7 +357,7 @@ func performQuery(query string, esClient ElasticSearchClient, keys []string) (Ma
 		m.MatchingUris = append(m.MatchingUris, hit.Source.Id)
 	}
 
-	// m.PassUri and m.PassType are provided by the caller
+	// m.PassUri, m.PassType and any m.ContainerProperties are provided by the caller
 	return m, nil
 }
 
