@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/datainq/xml-date-time"
 	"github.com/knakk/rdf"
 	"io"
 	"log"
 	"strings"
+	"time"
 )
 
 const (
@@ -19,6 +21,20 @@ const (
 	RdfTypeUri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 	// The URI of the ldp:container predicate
 	LdpContainsUri = "http://www.w3.org/ns/ldp#contains"
+	// The RDF type URI of PASS Publications
+	PassTypePublication = "http://oapass.org/ns/pass#Publication"
+	// The RDF type URI of PASS Users
+	PassTypeUser = "http://oapass.org/ns/pass#User"
+	// The RDF type URI of PASS Grants
+	PassTypeGrant = "http://oapass.org/ns/pass#Grant"
+	// The RDF type URI of PASS Funders
+	PassTypeFunder = "http://oapass.org/ns/pass#Funder"
+	// The RDF type URI of PASS Repository Copies
+	PassTypeRepositoryCopy = "http://oapass.org/ns/pass#RepositoryCopy"
+	// The RDF type URI of PASS Journals
+	PassTypeJournal = "http://oapass.org/ns/pass#Journal"
+	// The RDF type URI of PASS Submissions
+	PassTypeSubmission = "http://oapass.org/ns/pass#Submission"
 )
 
 // Represents an LDP container, including its URI, asserted types, and containment triples.
@@ -124,6 +140,66 @@ func (ldpc LdpContainer) Contains() []string {
 	return ldpc.filterPred(func(pred string) bool {
 		return pred == LdpContainsUri
 	})
+}
+
+func (ldpc LdpContainer) LastModified() time.Time {
+	// http://fedora.info/definitions/v4/repository#lastModified
+	var lastModifiedDateTime string
+	ldpc.filterTriple(func(t rdf.Triple) bool {
+		if t.Pred.String() == fmt.Sprintf("%s%s", FedoraResourceUriPrefix, "lastModified") {
+			lastModifiedDateTime = t.Obj.String()
+		}
+		return true
+	})
+
+	if t, err := xmldatetime.Parse(lastModifiedDateTime); err != nil {
+		return time.Unix(0, 0)
+	} else {
+		return t
+	}
+}
+
+func (ldpc LdpContainer) Created() time.Time {
+	// http://fedora.info/definitions/v4/repository#created
+	var createdDateTime string
+	ldpc.filterTriple(func(t rdf.Triple) bool {
+		if t.Pred.String() == fmt.Sprintf("%s%s", FedoraResourceUriPrefix, "created") {
+			createdDateTime = t.Obj.String()
+		}
+		return true
+	})
+
+	if t, err := xmldatetime.Parse(createdDateTime); err != nil {
+		return time.Unix(0, 0)
+	} else {
+		return t
+	}
+}
+
+func (ldpc LdpContainer) CreatedBy() string {
+	// http://fedora.info/definitions/v4/repository#createdBy
+	var createdBy string
+	ldpc.filterTriple(func(t rdf.Triple) bool {
+		if t.Pred.String() == fmt.Sprintf("%s%s", FedoraResourceUriPrefix, "createdBy") {
+			createdBy = t.Obj.String()
+		}
+		return true
+	})
+
+	return createdBy
+}
+
+func (ldpc LdpContainer) LastModifiedBy() string {
+	// http://fedora.info/definitions/v4/repository#lastModifiedBy
+	var lastModBy string
+	ldpc.filterTriple(func(t rdf.Triple) bool {
+		if t.Pred.String() == fmt.Sprintf("%s%s", FedoraResourceUriPrefix, "lastModifiedBy") {
+			lastModBy = t.Obj.String()
+		}
+		return true
+	})
+
+	return lastModBy
 }
 
 func marshalPassProperties(c LdpContainer, props *bytes.Buffer) error {

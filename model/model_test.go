@@ -32,6 +32,10 @@ func Test_LdpContainer_SingleFunderResource(t *testing.T) {
 	assert.Equal(t, "http://fcrepo:8080/fcrepo/rest/funders/34/53/1a/2f/34531a2f-e014-4f30-a7a2-d3476868f32c", c.Uri())
 	assert.True(t, hasNameProperty)
 	assert.Equal(t, "EXCELA HEALTH", name[0])
+	assert.Equal(t, "fedoraAdmin", c.LastModifiedBy())
+	assert.Equal(t, "admin", c.CreatedBy())
+	assert.Equal(t, "2018-10-09 19:07:12.487 +0000 UTC", c.LastModified().String())
+	assert.Equal(t, "2018-05-10 17:14:28.276 +0000 UTC", c.Created().String())
 }
 
 func Test_LdpContainer_SingleUserResource(t *testing.T) {
