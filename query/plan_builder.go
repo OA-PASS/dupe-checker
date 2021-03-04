@@ -175,7 +175,7 @@ func executeInternal(pb *planBuilderImpl, container model.LdpContainer, handler 
 
 		// we execute each template until we have executed them all or until one returns true
 		for _, t := range pb.templates {
-			if shortCircuit, err := executeTemplate(t, handler, container); shortCircuit || err != nil {
+			if shortCircuit, err := executeTemplate(t, handler, container); shortCircuit {
 				return true, err
 			} else {
 				result = result || shortCircuit
