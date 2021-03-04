@@ -114,6 +114,14 @@ func (decoder) Decode(config string) map[string]Plan {
 						} else {
 							log.Printf("built %T@%p", p, p)
 						}
+						if e := stack.peek(); e.t == typeToken {
+							if p, e := (*e.b).Build(); e != nil {
+								panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+							} else {
+								log.Printf("built %T@%p", p, p)
+								_, _ = stack.pop()
+							}
+						}
 					case typeToken:
 						if p, e := b.Build(); e != nil {
 							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
