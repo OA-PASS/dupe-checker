@@ -4,6 +4,7 @@ import (
 	"dupe-checker/model"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 const (
@@ -123,4 +124,13 @@ type Match struct {
 	// These are the URIs of potential matches, and the number of potential matches should equal the number of hits.
 	// The PassUri is expected to be present in this slice
 	MatchingUris []string
+	// These are the fields of the PASS resource that were matched by the query
+	MatchFields []string
+	// Properties of the container that may be useful for auditing
+	ContainerProperties struct {
+		SourceCreatedBy,
+		SourceLastModifiedBy string
+		SourceCreated,
+		SourceLastModified time.Time
+	}
 }
