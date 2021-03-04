@@ -39,7 +39,10 @@ type Env struct {
 	// services are known to be up
 	ItSkipServiceDepCheck,
 	// Maximum number of concurrent requests allowed to Fedora
-	FcrepoMaxConcurrentRequests string
+	FcrepoMaxConcurrentRequests,
+
+	HttpTimeoutMs,
+	SqliteDsn string
 }
 
 // answers a struct containing supported environment variables
@@ -65,6 +68,8 @@ func New() Env {
 		// Skips the service dependency check when starting ITs, useful for speeding up iteration when
 		// services are known to be up
 		ItSkipServiceDepCheck: getEnv("${IT_SKIP_SERVICE_DEP_CHECK}", "false"),
+		HttpTimeoutMs:         getEnv("${HTTP_TIMEOUT_MS}", "600000"), // 10 minutes
+		SqliteDsn:             getEnv("${SQLITE_DSN}", "file:/tmp/dupechecker.db"),
 	}
 }
 
