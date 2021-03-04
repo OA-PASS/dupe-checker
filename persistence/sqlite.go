@@ -23,6 +23,8 @@ const (
 	selectContainerByUri = "SELECT container FROM main.containers WHERE container=?"
 	selectStateByUri     = "SELECT state FROM main.containers WHERE container=?"
 	selectLdpcByUri      = "SELECT container, parent, pass, types FROM main.containers WHERE container=?"
+	//TODO inverse field
+	//selectInverseDupe    = "SELECT source,target FROM main.dupes WHERE source=? and target=?"
 	updateStateByUri     = "UPDATE main.containers SET state = ? WHERE container = ?"
 	updateContainerByUri = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
 	insertState          = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
