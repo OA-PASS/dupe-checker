@@ -30,32 +30,30 @@ var environment = env.New()
 
 // A filter which will not descend into PASS resources (i.e. returns 'false' when the 'container' is determined to be a
 // PASS resource).
-var SkipPassResourceFilter = func(container model.LdpContainer) bool {
+var IsPassResource = func(container model.LdpContainer) bool {
 	// if the container is a PASS resource, don't descend (there are no contained resources)
 	// TODO double check re files
 	if ok, _ := container.IsPassResource(); ok {
-		//log.Printf("visit: refusing to recurse PASS resource %s", container.Uri())
-		return false
+		return true
 	}
 
-	return true
+	return false
 }
 
 // A filter which will accept PASS resources (i.e. returns 'true' when the 'container' is determined to be a PASS
 // resource).
 var AcceptPassResource = func(container model.LdpContainer) bool {
-	return !SkipPassResourceFilter(container)
+	return IsPassResource(container)
 }
 
 // A filter which will not descend into ACL resources (i.e. returns 'false' when the 'container' is determined to be an
 // ACL).
-var SkipAclResourceFilter = func(container model.LdpContainer) bool {
-	// if it's an acl don't descend
+var IsAclResource = func(container model.LdpContainer) bool {
 	if strings.HasPrefix(container.Uri(), fmt.Sprintf("%s/acls", environment.FcrepoBaseUri)) || strings.Contains(container.Uri(), ".acl") {
-		return false
+		return true
 	}
 
-	return true
+	return false
 }
 
 // Descends into every Container (hard-coded to return 'true')
