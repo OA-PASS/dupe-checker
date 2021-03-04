@@ -31,6 +31,9 @@ var queryConfigNestedOr string
 //go:embed queryconfig-simple.json
 var queryConfigSimple string
 
+//go:embed queryconfig-multipletypes.json
+var queryConfigMultipleTypes string
+
 //go:embed pass-journal.n3
 var passJournal string
 
@@ -158,7 +161,18 @@ func Test_DecodeNestedOrArray(t *testing.T) {
 	expectedTotalPlanCount := 6 // the root plan, two child or plans (one as a child of the other), three templates.
 	expectedBuiltCount := expectedTotalPlanCount
 	verifyPlans(t, plans, expectedBuiltCount, expectedTotalPlanCount)
+}
 
+func Test_DecodeMultipleTypes(t *testing.T) {
+	plans := decoder{}.Decode(queryConfigMultipleTypes)
+
+	assert.NotNil(t, plans)
+	assert.Equal(t, 2, len(plans))
+
+	expectedTotalPlanCount := 8 // one plan for each type, two 'or' plans with a total of three
+	// templates for the Publication plan type, and a single template for the User plan type.
+	expectedBuiltCount := expectedTotalPlanCount
+	verifyPlans(t, plans, expectedBuiltCount, expectedTotalPlanCount)
 }
 
 func verifyPlans(t *testing.T, plans map[string]Plan, expectedBuiltCount, expectedTotalCount int) {

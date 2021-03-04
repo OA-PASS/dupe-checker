@@ -9,14 +9,15 @@ import (
 )
 
 var (
-	queryT  = token("query")
-	orT     = token("or")
-	orArray = token("pseudo-orarray")
-	orObj   = token("pseudo-orobj")
-	andT    = token("and")
-	keysT   = token("keys")
-	qT      = token("q")
-	nilT    = token("nil")
+	queryT    = token("query")
+	orT       = token("or")
+	orArray   = token("pseudo-orarray")
+	orObj     = token("pseudo-orobj")
+	andT      = token("and")
+	keysT     = token("keys")
+	qT        = token("q")
+	nilT      = token("nil")
+	typeToken = token("pseudo-passType")
 )
 
 type token string
@@ -99,18 +100,26 @@ func (decoder) Decode(config string) map[string]Plan {
 							}
 						}
 					case orT:
-						//if p, e := b.Build(); e != nil {
-						//	panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
-						//} else {
-						//	log.Printf("built %T@%p", p, p)
-						//}
+						if e := stack.peek(); e.t == typeToken {
+							if p, e := (*e.b).Build(); e != nil {
+								panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+							} else {
+								log.Printf("built %T@%p", p, p)
+								_, _ = stack.pop()
+							}
+						}
 					case queryT:
 						if p, e := b.Build(); e != nil {
 							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 						} else {
 							log.Printf("built %T@%p", p, p)
 						}
-
+					case typeToken:
+						if p, e := b.Build(); e != nil {
+							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
+						} else {
+							log.Printf("built %T@%p", p, p)
+						}
 					}
 				} else {
 					if p, e := passTypeBuilder.Build(); e != nil {
@@ -196,6 +205,9 @@ func (decoder) Decode(config string) map[string]Plan {
 					} else {
 						plans[passType] = passTypeBuilder
 					}
+					var ptb Builder
+					ptb = passTypeBuilder.(Builder)
+					stack.push(typeToken, &ptb)
 				}
 			}
 		}
