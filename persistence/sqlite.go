@@ -9,7 +9,6 @@ import (
 	"github.com/knakk/rdf"
 	"log"
 	"strings"
-
 	//"database/sql"
 	//"database/sql/driver"
 	"dupe-checker/model"
@@ -18,14 +17,17 @@ import (
 
 const (
 	createContainersTable = "CREATE TABLE IF NOT EXISTS main.containers (container text UNIQUE NOT NULL, parent text, pass text, types text, state integer NOT NULL)"
-	createParentIdx       = "CREATE INDEX IF NOT EXISTS main.parent_index ON containers (parent)"
-	selectContainerByUri  = "SELECT container FROM main.containers WHERE container=?"
-	selectStateByUri      = "SELECT state FROM main.containers WHERE container=?"
-	selectLdpcByUri       = "SELECT container, parent, pass, types FROM main.containers WHERE container=?"
-	updateStateByUri      = "UPDATE main.containers SET state = ? WHERE container = ?"
-	updateContainerByUri  = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
-	insertState           = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
-	insertContainer       = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
+	// if we need the times in this table to be processed as timestamps, we can change the type to 'numeric'
+	createDupesTable     = "CREATE TABLE IF NOT EXISTS main.dupes (source text NOT NULL, target text NOT NULL, passType text NOT NULL, matchedOn text NOT NULL, sourceCreatedBy text, targetCreatedBy text, sourceLastModifiedBy text, targetLastModifiedBy text, sourceCreated text, targetCreated text, sourceLastModified text, targetLastModified text, UNIQUE (source, target))"
+	createParentIdx      = "CREATE INDEX IF NOT EXISTS main.parent_index ON containers (parent)"
+	selectContainerByUri = "SELECT container FROM main.containers WHERE container=?"
+	selectStateByUri     = "SELECT state FROM main.containers WHERE container=?"
+	selectLdpcByUri      = "SELECT container, parent, pass, types FROM main.containers WHERE container=?"
+	updateStateByUri     = "UPDATE main.containers SET state = ? WHERE container = ?"
+	updateContainerByUri = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
+	insertState          = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
+	insertContainer      = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
+	insertDupe           = "INSERT INTO main.dupes (source, target, passType, matchedOn, sourceCreatedBy, targetCreatedBy, sourceLastModifiedBy, targetLastModifiedBy, sourceCreated, targetCreated, sourceLastModified, targetLastModified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	// TODO? selectChildren        = "SELECT container FROM main.containers WHERE parent=?"
 )
 
@@ -77,6 +79,12 @@ func NewSqlLiteStore(dsn string, params SqliteParams, ctx context.Context) (Stor
 	}
 
 	_, err = db.Exec(createParentIdx)
+
+	if err != nil {
+		return sqlLiteEventStore{}, err
+	}
+
+	_, err = db.Exec(createDupesTable)
 
 	if err != nil {
 		return sqlLiteEventStore{}, err
@@ -203,6 +211,36 @@ func (store sqlLiteEventStore) Retrieve(uri string) (State, error) {
 	}
 
 	return state, NewErrNoResults(selectStateByUri, "persistence", "Retrieve", uri)
+}
+
+func (store sqlLiteEventStore) StoreDupe(sourceUri, targetUri, passType string, matchedOn []string, attribs DupeContainerAttributes) error {
+	var tx *sql.Tx
+	var err error
+
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("%v", NewErrTx(rollback, fmt.Sprintf("dupe: <%s> <%s>", sourceUri, targetUri), err, "persistence", "StoreDupe"))
+		}
+	}()
+
+	if tx, err = store.db.Begin(); err != nil {
+		return NewErrTx(begin, fmt.Sprintf("dupe: <%s> <%s>", sourceUri, targetUri), err, "persistence", "StoreDupe")
+	}
+
+	if _, err = tx.Exec(insertDupe, sourceUri, targetUri, passType, strings.Join(matchedOn, ","),
+		attribs.SourceCreatedBy, attribs.TargetCreatedBy, attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy,
+		attribs.SourceCreated, attribs.TargetCreated, attribs.SourceLastModified, attribs.TargetLastModified); err != nil {
+		return NewErrQuery(insertDupe, err, "persistence", "StoreDupe", sourceUri, targetUri, passType,
+			strings.Join(matchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
+			attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
+			attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
+	}
+
+	if err := tx.Commit(); err != nil {
+		return NewErrTx(commit, fmt.Sprintf("dupe: <%s> <%s>", sourceUri, targetUri), err, "persistence", "StoreDupe")
+	}
+
+	return nil
 }
 
 func (store sqlLiteEventStore) retrieveContainer(uri string) (model.LdpContainer, error) {

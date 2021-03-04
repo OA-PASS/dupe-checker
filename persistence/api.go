@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 //type TreeStore interface {
@@ -155,8 +156,20 @@ const (
 	Processed
 )
 
+type DupeContainerAttributes struct {
+	SourceCreatedBy,
+	TargetCreatedBy,
+	SourceLastModifiedBy,
+	TargetLastModifiedBy string
+	SourceCreated,
+	TargetCreated,
+	SourceLastModified,
+	TargetLastModified time.Time
+}
+
 type Store interface {
 	StoreContainer(c model.LdpContainer, s State) error
 	StoreUri(containerUri string, s State) error
 	Retrieve(uri string) (State, error)
+	StoreDupe(sourceUri, targetUri, passType string, matchedOn []string, attribs DupeContainerAttributes) error
 }
