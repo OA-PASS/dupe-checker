@@ -175,6 +175,8 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	// give time for the indexer to process the newly created resources
+	time.Sleep(2 * time.Second)
 	// call flag.Parse() here if TestMain uses flags
 	os.Exit(m.Run())
 }
@@ -183,7 +185,7 @@ func Test_DuplicateQuerySuite(t *testing.T) {
 	t.Run("Duplicates Test Suite", func(t *testing.T) {
 		t.Run("duplicateFunder", findDuplicateFunder)
 		t.Run("duplicateGrant", findDuplicateGrant)
-		t.Run("duplicateJournalOr", findDuplicateJournalOr)
+		t.Run("duplicateJournalOr", findDuplicateJournal)
 		t.Run("duplicateJournalSimple", findDuplicateJournalSimple)
 		t.Run("duplicatePublication", findDuplicatePublication)
 		t.Run("duplicateRepoCopy", findDuplicateRepoCopy)
@@ -192,7 +194,14 @@ func Test_DuplicateQuerySuite(t *testing.T) {
 	})
 }
 
-func Test_FindDuplicatePublicationsAndUsers(t *testing.T) {
+func Test_DuplicateRun(t *testing.T) {
+	t.Run("Duplicate Test Run", func(t *testing.T) {
+		t.Run("duplicatePubsAndUsers", findDuplicatePublicationsAndUsers)
+		t.Run("duplicateAllTheRest", findDuplicateAllTheRest)
+	})
+}
+
+func findDuplicatePublicationsAndUsers(t *testing.T) {
 	_ = &sqlite3.SQLiteDriver{}
 
 	store, _ := persistence.NewSqlLiteStore("file:/tmp/pubsanduserstest.db?mode=rwc&cache=shared", persistence.SqliteParams{
@@ -299,7 +308,7 @@ func Test_FindDuplicatePublicationsAndUsers(t *testing.T) {
 		}
 	}
 
-	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "Test_FindDuplicatePublicationsAndUsers")
+	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "findDuplicatePublicationsAndUsers")
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
 
@@ -309,7 +318,7 @@ func Test_FindDuplicatePublicationsAndUsers(t *testing.T) {
 		log.Printf(">> Error: %s", e.Error())
 	})
 	controller.eventHandler(func(e visit.Event) {
-		log.Printf(">> Event: %v", e)
+		// noop
 	})
 
 	controller.containerHandler(containerHandler)
@@ -317,7 +326,7 @@ func Test_FindDuplicatePublicationsAndUsers(t *testing.T) {
 	controller.begin(visitor, environment.FcrepoBaseUri, acceptFn, filterFn)
 }
 
-func Test_FindDuplicateAllTheRest(t *testing.T) {
+func findDuplicateAllTheRest(t *testing.T) {
 	_ = &sqlite3.SQLiteDriver{}
 
 	store, _ := persistence.NewSqlLiteStore("file:/tmp/pubsanduserstest.db?mode=rwc&cache=shared", persistence.SqliteParams{
@@ -437,7 +446,7 @@ func Test_FindDuplicateAllTheRest(t *testing.T) {
 		}
 	}
 
-	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "Test_FindDuplicateAllTheRest")
+	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "findDuplicateAllTheRest")
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
 
@@ -447,7 +456,7 @@ func Test_FindDuplicateAllTheRest(t *testing.T) {
 		log.Printf(">> Error: %s", e.Error())
 	})
 	controller.eventHandler(func(e visit.Event) {
-		log.Printf(">> Event: %v", e)
+		// noop
 	})
 
 	controller.containerHandler(containerHandler)
@@ -457,7 +466,7 @@ func Test_FindDuplicateAllTheRest(t *testing.T) {
 
 func findDuplicateSubmission(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanSubmission)["http://oapass.org/ns/pass#Submission"]
+	queryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -489,7 +498,7 @@ func findDuplicateSubmission(t *testing.T) {
 
 func findDuplicateUser(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanUser)["http://oapass.org/ns/pass#User"]
+	queryPlan := query.NewPlanDecoder().Decode(queryPlanPubsAndUsers)[model.PassTypeUser]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -521,7 +530,7 @@ func findDuplicateUser(t *testing.T) {
 
 func findDuplicateRepoCopy(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanRepoCopy)["http://oapass.org/ns/pass#RepositoryCopy"]
+	queryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeRepositoryCopy]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -553,7 +562,7 @@ func findDuplicateRepoCopy(t *testing.T) {
 
 func findDuplicateGrant(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanGrant)["http://oapass.org/ns/pass#Grant"]
+	queryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeGrant]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -585,7 +594,7 @@ func findDuplicateGrant(t *testing.T) {
 
 func findDuplicateFunder(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanFunder)["http://oapass.org/ns/pass#Funder"]
+	queryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeFunder]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -617,7 +626,7 @@ func findDuplicateFunder(t *testing.T) {
 
 func findDuplicatePublication(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanPub)["http://oapass.org/ns/pass#Publication"]
+	queryPlan := query.NewPlanDecoder().Decode(queryPlanPubsAndUsers)[model.PassTypePublication]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -649,7 +658,7 @@ func findDuplicatePublication(t *testing.T) {
 
 func findDuplicateJournalSimple(t *testing.T) {
 	t.Parallel()
-	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlanSimpleJournal)["http://oapass.org/ns/pass#Journal"]
+	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlanSimpleJournal)[model.PassTypeJournal]
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
 	times := 0
@@ -678,9 +687,9 @@ func findDuplicateJournalSimple(t *testing.T) {
 	assert.Equal(t, 2, len(potentialDuplicates))
 }
 
-func findDuplicateJournalOr(t *testing.T) {
+func findDuplicateJournal(t *testing.T) {
 	t.Parallel()
-	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlanOrJournal)["http://oapass.org/ns/pass#Journal"]
+	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeJournal]
 	handlerExecuted := false
 	times := 0
 	potentialDuplicates := map[string]int{}
@@ -703,14 +712,14 @@ func findDuplicateJournalOr(t *testing.T) {
 				potentialDuplicates[matchingUri] = 1
 			}
 		}
-		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
+		return len(match.MatchingUris) > 1, nil // we return true here because in an 'or' scenario - which we aren't in for this test
 		// - we could short-circuit the plan, because we found three hits for the container (i.e., there are two
 		// duplicates)
 	}
 	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler, nil)
 	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
-	assert.Equal(t, 3, len(potentialDuplicates)) // we expect three potential duplicates
-	assert.Equal(t, 3, times)                    // the match handler executed once for each journal TODO verify this is correct behavior when we are returning false from the handler.
+	assert.Equal(t, 3, len(potentialDuplicates)) // we expect three potential duplicates; the journal with the single ISSN won't be found because we exact match on ISSNs, this is a TODO/FIXME
+	assert.Equal(t, 5, times)                    // the match handler executed once for each query that was performed.
 }
 
 func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passType string, matchHandler func(result interface{}) (bool, error), containerHandler func(model.LdpContainer)) {
