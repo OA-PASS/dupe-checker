@@ -28,7 +28,9 @@ Conceivably this issue will cause a problem where there are more than two permut
 * Journal A, `name`: "Journal of Foo", `issn`: Print:ABCD-1234, Online:WXYZ-6789
 * Journal B, `name`: "Journal of Foo", `issn`: Print:ABCD-1234, Linking:JKLM-8765
 
-In this scenario, the duplicate Journals will not be discovered, because the query for Journal A will insist on a match for the Print and Online ISSN, while the query for Journal B will insist on a match for the Print and Linking ISSN.  Since neither Journal has the full complement of ISSNs, they won't be discovered by their respective queries.  I don't think the general situation exists in the PASS data model at the moment.
+In this scenario, the duplicate Journals will not be discovered, because the query for Journal A will insist on a match for the Print and Online ISSN, while the query for Journal B will insist on a match for the Print and Linking ISSN.  Since neither Journal has the full complement of ISSNs, they won't be discovered by their respective queries.  
+
+User resources might also be affected by this issue, where there may be up to three values contained in `locatorIds`.  Some `User` resources possess two values for `locatorIds` (missing a `hopkinsId`), while others possess all three.  I haven't seen any User resources with only one value for `locatorIds`. 
 
 ### Pausing and resuming is not fully implemented
 
