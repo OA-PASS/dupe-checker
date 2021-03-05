@@ -18,8 +18,6 @@ var ErrMissingRequiredKey = errors.New("query: missing required key(s)")
 var ErrPerformingElasticSearchRequest = errors.New("query: error performing search")
 
 // escapes the string to be palatable for an elastic search query
-// FIXME where is '&' in, e.g. title, getting encoded as '&amp;' in ES queries?
-
 var urlQueryEscFunc = func(query string) string {
 	new := strings.ReplaceAll(url.PathEscape(query), ":", "%3F")
 	return strings.ReplaceAll(new, "&", "%26")
