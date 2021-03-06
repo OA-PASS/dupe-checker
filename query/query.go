@@ -20,6 +20,7 @@ import (
 	"dupe-checker/model"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -129,16 +130,22 @@ type Config interface {
 }
 
 type Match struct {
+	// The "front-porch" base URI which will be used in the PassUri.
+	fedoraBaseUri string
+	// The "back-porch" base URI which will be used in the MatchingUris.
+	indexBaseUri string
 	// The elastic search query url used to perform the query
 	QueryUrl string
 	// The number of hits in the result, should be 1.  A count greater than 1 indicates a suspected duplicate
 	HitCount int
 	// This is the URI of the resource that is being searched for duplicates
+	// It originates from the model.LdpContainer.Uri() (i.e., the so-called "front porch URI")
 	PassUri string
 	// This is the type of the PASS resource that is being searched for duplicates
 	PassType string
 	// These are the URIs of potential matches, and the number of potential matches should equal the number of hits.
-	// The PassUri is expected to be present in this slice
+	// Matching URIs are populated by Elastic Search results, and their scheme, hostname, and port may differ from that
+	// used in the PassUri.  Elastic Search contains the so-called "back porch URI".
 	MatchingUris []string
 	// These are the fields of the PASS resource that were matched by the query
 	MatchFields []string
@@ -149,4 +156,30 @@ type Match struct {
 		SourceCreated,
 		SourceLastModified time.Time
 	}
+}
+
+// Strips the back and front porch Fedora base URIs from the supplied URIs, and compares the remaining URI paths for
+// equality.  The front and back porch base URIs are kept as internal state, initialized when the Match is created.
+// Typically the front and back porch base URIs come from the environment.
+//
+// If the necessary internal state is not present on Match, this method panics.
+//
+// If a supplied URI does not contain either prefix, the entire URI will be used for comparison
+func (m *Match) UriPathsEqual(a, b string) bool {
+	if strings.TrimSpace(m.fedoraBaseUri) == "" || strings.TrimSpace(m.indexBaseUri) == "" {
+		panic("cannot compare URI paths, as the base uri to strip are not set")
+	}
+	a = strip(a, m.fedoraBaseUri, m.indexBaseUri)
+	b = strip(b, m.fedoraBaseUri, m.indexBaseUri)
+	return a == b
+}
+
+// trims the prefixes from the supplied string
+func strip(string string, prefix ...string) string {
+	for _, p := range prefix {
+		if strings.HasPrefix(string, p) {
+			string = strings.TrimPrefix(string, p)
+		}
+	}
+	return string
 }

@@ -60,6 +60,46 @@ func Test_PlanBuilderImplChildrenReturnsTemplates(t *testing.T) {
 
 }
 
+func Test_Strip(t *testing.T) {
+	s := "http://google.com/foo"
+
+	assert.Equal(t, "/foo", strip(s, "http://google.com"))
+	assert.Equal(t, "/foo", strip(s, "http://www.ford.com", "http://google.com"))
+	assert.Equal(t, "/foo", strip(s, "http://google.com", "http://google.com"))
+
+	backPorchPrefix := "http://fcrepo:8080/fcrepo/rest"
+	frontPorchPrefix := "http://localhost:9090/fcrepo/rest"
+
+	backPorch := "http://fcrepo:8080/fcrepo/rest/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054"
+	frontPorch := "http://localhost:9090/fcrepo/rest/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054"
+
+	assert.Equal(t, "/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054", strip(backPorch, backPorchPrefix))
+	assert.Equal(t, "/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054", strip(frontPorch, frontPorchPrefix))
+
+	assert.Equal(t, strip(backPorch, backPorchPrefix, frontPorchPrefix), strip(frontPorch, backPorchPrefix, frontPorchPrefix))
+}
+
+func Test_MatchUriPathsEqual(t *testing.T) {
+	backPorch := "http://fcrepo:8080/fcrepo/rest/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054"
+	frontPorch := "http://localhost:9090/fcrepo/rest/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054"
+
+	m := Match{
+		fedoraBaseUri: "http://localhost:9090/fcrepo/rest",
+		indexBaseUri:  "http://fcrepo:8080/fcrepo/rest",
+	}
+
+	assert.True(t, m.UriPathsEqual(backPorch, frontPorch))
+
+	m = Match{
+		fedoraBaseUri: "http://localhost:9090/fcrepo/rest",
+		indexBaseUri:  "http://localhost:9090/fcrepo/rest",
+	}
+
+	assert.True(t, m.UriPathsEqual(frontPorch, frontPorch))
+
+	assert.True(t, m.UriPathsEqual(backPorch, backPorch))
+}
+
 // insures that the Children() method of planBuilderImpl properly recurses child plans, including templates
 func Test_PlanBuilderImplChildren(t *testing.T) {
 	grandTemplates := []*tmplBuilderImpl{&tmplBuilderImpl{}}
