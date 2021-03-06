@@ -29,6 +29,24 @@ import (
 	"sync"
 )
 
+// A handler implementation which does nothing with its argument
+var NoopEventHandler = func(e Event) {}
+
+// A handler implementation which does nothing with its argument
+var NoopErrorHandler = func(e error) {}
+
+// A handler implementation which does nothing with its argument
+var NoopContainerHandler = func(c model.LdpContainer) {}
+
+// A handler implementation which uses the log package to output a string representation of its argument
+var LogEventHandler = func(e Event) { log.Printf("%s", e) }
+
+// A handler implementation which uses the log package to output a string representation of its argument
+var LogErrorHandler = func(e error) { log.Printf("%s", e.Error()) }
+
+// A handler implementation which uses the log package to output a string representation of its argument
+var LogContainerHandler = func(c model.LdpContainer) { log.Printf("URI: %s PASS Type: %s", c.Uri(), c.PassType()) }
+
 type ConcurrentVisitor struct {
 	// retrieves LDP containers; invocation is gated by the semaphore
 	retriever retrieve.Retriever
@@ -89,11 +107,14 @@ var AcceptAllPassResourcesWithUris = func(c model.LdpContainer) bool {
 // parallel.
 func New(retriever retrieve.Retriever, maxConcurrent int) ConcurrentVisitor {
 	return ConcurrentVisitor{
-		retriever:  retriever,
-		semaphore:  make(chan int, maxConcurrent),
+		retriever: retriever,
+		semaphore: make(chan int, maxConcurrent),
+		// TODO rethink what is exported Note that Controller's Begin(...) method will overwrite these values with a new channel
 		Containers: make(chan model.LdpContainer),
-		Errors:     make(chan error),
-		Events:     make(chan Event),
+		// TODO rethink what is exported Note that Controller's Begin(...) method will overwrite these values with a new channel
+		Errors: make(chan error),
+		// TODO rethink what is exported Note that Controller's Begin(...) method will overwrite these values with a new channel
+		Events: make(chan Event),
 	}
 }
 
@@ -180,4 +201,87 @@ func (v ConcurrentVisitor) walkInternal(c model.LdpContainer, filter, accept fun
 	}
 	wg.Wait()
 	v.Events <- Event{c.Uri(), EventDescendEndContainer, fmt.Sprintf("ENDCONTAINER: %s", c.Uri())}
+}
+
+type Controller struct {
+	wg              sync.WaitGroup
+	errorReader     func(e error)
+	eventReader     func(e Event)
+	containerReader func(c model.LdpContainer)
+	visitor         ConcurrentVisitor
+}
+
+func NewController(r retrieve.Retriever, maxConcurrentRequests int) Controller {
+	c := Controller{
+		visitor: New(r, maxConcurrentRequests),
+	}
+	return c
+}
+
+func (cr *Controller) ErrorHandler(handler func(error)) {
+	if cr.errorReader != nil {
+		panic("illegal state: existing error handler")
+	}
+	cr.errorReader = handler
+}
+
+func (cr *Controller) EventHandler(handler func(Event)) {
+	if cr.eventReader != nil {
+		panic("illegal state: existing event handler")
+	}
+	cr.eventReader = handler
+}
+
+func (cr *Controller) ContainerHandler(handler func(model.LdpContainer)) {
+	if cr.containerReader != nil {
+		panic("illegal state: existing container handler")
+	}
+	cr.containerReader = handler
+}
+
+func (cr *Controller) Begin(startingUri string, acceptFn func(container model.LdpContainer) bool, filterFn func(container model.LdpContainer) bool) {
+	// FIXME if we wish to make Begin and the underlying visitor re-usable, need to rethink what is exported.
+	cr.visitor.Containers = make(chan model.LdpContainer)
+	cr.visitor.Errors = make(chan error)
+	cr.visitor.Events = make(chan Event)
+
+	if cr.errorReader != nil {
+		cr.wg.Add(1)
+		go func() {
+			for err := range cr.visitor.Errors {
+				cr.errorReader(err)
+			}
+			cr.wg.Done()
+		}()
+	}
+
+	if cr.eventReader != nil {
+		cr.wg.Add(1)
+		go func() {
+			for event := range cr.visitor.Events {
+				cr.eventReader(event)
+			}
+
+			cr.wg.Done()
+		}()
+	}
+
+	if cr.containerReader != nil {
+		cr.wg.Add(1)
+		go func() {
+			for container := range cr.visitor.Containers {
+				cr.containerReader(container)
+			}
+
+			cr.wg.Done()
+		}()
+	}
+
+	cr.wg.Add(1)
+	go func() {
+		cr.visitor.Walk(startingUri, filterFn, acceptFn)
+		cr.wg.Done()
+	}()
+
+	cr.wg.Wait()
 }
