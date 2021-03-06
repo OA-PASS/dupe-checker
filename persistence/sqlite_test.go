@@ -20,6 +20,7 @@ import (
 	"database/sql"
 	"dupe-checker/model"
 	_ "embed"
+	"errors"
 	"github.com/knakk/rdf"
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -178,6 +179,18 @@ func Test_RoundTripProperties(t *testing.T) {
 
 	// Verify the properties
 	assert.Equal(t, expectedProperties, storeCopy.PassProperties())
+}
+
+func Test_StoreDupeConstraint(t *testing.T) {
+	store, err := NewSqlLiteStore(":memory:", SqliteParams{}, nil)
+	assert.Nil(t, err)
+
+	err = store.StoreDupe("source", "target", "Publication", []string{"doi"}, DupeContainerAttributes{})
+	assert.Nil(t, err)
+
+	err = store.StoreDupe("source", "target", "Publication", []string{"doi"}, DupeContainerAttributes{})
+	assert.NotNil(t, err)
+	assert.True(t, errors.Is(err, ErrConstraint))
 }
 
 func decodeTriples(t *testing.T, file string) []rdf.Triple {

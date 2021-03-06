@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/knakk/rdf"
+	"github.com/mattn/go-sqlite3"
 	"log"
 	"strings"
 	//"database/sql"
@@ -248,6 +249,16 @@ func (store sqlLiteEventStore) StoreDupe(sourceUri, targetUri, passType string, 
 	if _, err = tx.Exec(insertDupe, sourceUri, targetUri, passType, strings.Join(matchedOn, ","),
 		attribs.SourceCreatedBy, attribs.TargetCreatedBy, attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy,
 		attribs.SourceCreated, attribs.TargetCreated, attribs.SourceLastModified, attribs.TargetLastModified); err != nil {
+
+		if sqliteErr, ok := err.(sqlite3.Error); ok {
+			if sqliteErr.Code == sqlite3.ErrConstraint {
+				return NewErrConstraint(insertDupe, err, "persistence", "StoreDupe", sourceUri, targetUri, passType,
+					strings.Join(matchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
+					attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
+					attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
+			}
+		}
+
 		return NewErrQuery(insertDupe, err, "persistence", "StoreDupe", sourceUri, targetUri, passType,
 			strings.Join(matchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
 			attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
