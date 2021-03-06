@@ -14,7 +14,6 @@
 // limitations under the License.
 //
 
-// Evaluates relevant environment variables and provides reasonable defaults for runtime operation
 package env
 
 import (
@@ -22,41 +21,34 @@ import (
 	"strings"
 )
 
+const (
+	FCREPO_BASE_URI                = "FCREPO_BASE_URI"
+	FCREPO_USER                    = "FCREPO_USER"
+	FCREPO_PASS                    = "FCREPO_PASS"
+	FCREPO_MAX_CONCURRENT_REQUESTS = "FCREPO_MAX_CONCURRENT_REQUESTS"
+	FCREPO_INDEX_BASE_URI          = "FCREPO_INDEX_BASE_URI"
+	HTTP_TIMEOUT_MS                = "HTTP_TIMEOUT_MS"
+	SQLITE_DSN                     = "SQLITE_DSN"
+	INDEX_SEARCH_BASE_URI          = "INDEX_SEARCH_BASE_URI"
+	IT_SKIP_SERVICE_DEP_CHECK      = "IT_SKIP_SERVICE_DEP_CHECK"
+)
+
 type Env struct {
 	// base http uri of the fedora repository rest api
 	FcrepoBaseUri,
-	// port that the servlet container listens on
-	FcrepoPort,
+	// indexed base uri
+	FcrepoIndexBaseUri,
 	// user that has admin privileges to the fedora repository
 	FcrepoUser,
 	// password granting admin privileges to the fedora repository
 	FcrepoPassword,
-	// the directory within the docker container (perhaps mounted from a volume) used to persist fedora data
-	FcrepoDataDir,
-	// header set by the shibboleth service provider identifying the authenticated user,
-	// used by the jetty-shib-authenticator
-	FcrepoSpAuthHeader,
-	// roles that shibboleth authenticated users belong to, comma delimited, used by the jetty-shib-authenticator
-	FcrepoSpAuthRoles,
-	// name of the basic authentication realm that protects fedora (corresponds to the realm name of the login service
-	// in fedora's web.xml)
-	FcrepoAuthRealm,
-	// Spring Resource URI identifying the ModeShape Spring configuration
-	FcrepoModeConfig,
-	// log level used by Fedora
-	FcrepoLogLevel,
-	// log level used by the Authentication-related classes of Fedora
-	FcrepoAuthLogLevel,
-	// public URI of the Fedora repository rest api
-	FcrepoPublicBaseUri,
-	// shibboleth service provider URI that proxies the Fedora base URI
-	FcrepoSpProxyUri,
 	// Skips the service dependency check when starting ITs, useful for speeding up iteration when
 	// services are known to be up
 	ItSkipServiceDepCheck,
 	// Maximum number of concurrent requests allowed to Fedora
 	FcrepoMaxConcurrentRequests,
-
+	// base http uri of the index search endpoint
+	IndexSearchBaseUri,
 	HttpTimeoutMs,
 	SqliteDsn string
 }
@@ -65,27 +57,18 @@ type Env struct {
 func New() Env {
 	return Env{
 
-		FcrepoBaseUri:      getEnv("${FCREPO_BASE_URI}", "http://fcrepo:8080/fcrepo/rest"),
-		FcrepoPort:         getEnv("${FCREPO_JETTY_PORT}", ""),
-		FcrepoUser:         getEnv("${FCREPO_USER}", "fedoraAdmin"),
-		FcrepoPassword:     getEnv("${FCREPO_PASS}", "moo"),
-		FcrepoDataDir:      getEnv("${FCREPO_DATA_DIR}", ""),
-		FcrepoSpAuthHeader: getEnv("${FCREPO_SP_AUTH_HEADER}", ""),
-		FcrepoSpAuthRoles:  getEnv("${FCREPO_SP_AUTH_ROLES}", ""),
-		FcrepoAuthRealm:    getEnv("${FCREPO_AUTH_REALM}", ""),
-		FcrepoModeConfig:   getEnv("${FCREPO_MODESHAPE_CONFIG}", ""),
-		FcrepoLogLevel:     getEnv("${FCREPO_LOGLEVEL}", ""),
-		FcrepoAuthLogLevel: getEnv("${FCREPO_AUTH_LOGLEVEL}", ""),
-		// Note the following env vars are for testing only, *not* present or used in the production image
-		FcrepoPublicBaseUri:         getEnv("${PUBLIC_BASE_URI}", ""),
-		FcrepoSpProxyUri:            getEnv("${SP_PROXY_URI}", ""),
-		FcrepoMaxConcurrentRequests: getEnv("${FCREPO_MAX_CONCURRENT_REQUESTS}", "5"),
+		FcrepoBaseUri:               getEnv(FCREPO_BASE_URI, "http://fcrepo:8080/fcrepo/rest"),
+		FcrepoIndexBaseUri:          getEnv(FCREPO_INDEX_BASE_URI, "http://fcrepo:8080/fcrepo/rest"),
+		FcrepoUser:                  getEnv(FCREPO_USER, "fedoraAdmin"),
+		FcrepoPassword:              getEnv(FCREPO_PASS, "moo"),
+		FcrepoMaxConcurrentRequests: getEnv(FCREPO_MAX_CONCURRENT_REQUESTS, "5"),
 
 		// Skips the service dependency check when starting ITs, useful for speeding up iteration when
 		// services are known to be up
-		ItSkipServiceDepCheck: getEnv("${IT_SKIP_SERVICE_DEP_CHECK}", "false"),
-		HttpTimeoutMs:         getEnv("${HTTP_TIMEOUT_MS}", "600000"), // 10 minutes
-		SqliteDsn:             getEnv("${SQLITE_DSN}", "file:/tmp/dupechecker.db"),
+		ItSkipServiceDepCheck: getEnv(IT_SKIP_SERVICE_DEP_CHECK, "false"),
+		HttpTimeoutMs:         getEnv(HTTP_TIMEOUT_MS, "600000"), // 10 minutes
+		SqliteDsn:             getEnv(SQLITE_DSN, "file:/tmp/dupechecker.db"),
+		IndexSearchBaseUri:    getEnv(INDEX_SEARCH_BASE_URI, "http://elasticsearch:9200/pass/_search"),
 	}
 }
 
