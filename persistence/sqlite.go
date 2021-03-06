@@ -35,18 +35,21 @@ import (
 const (
 	createContainersTable = "CREATE TABLE IF NOT EXISTS main.containers (container text UNIQUE NOT NULL, parent text, pass text, types text, state integer NOT NULL)"
 	// if we need the times in this table to be processed as timestamps, we can change the type to 'numeric'
-	createDupesTable     = "CREATE TABLE IF NOT EXISTS main.dupes (source text NOT NULL, target text NOT NULL, passType text NOT NULL, matchedOn text NOT NULL, sourceCreatedBy text, targetCreatedBy text, sourceLastModifiedBy text, targetLastModifiedBy text, sourceCreated text, targetCreated text, sourceLastModified text, targetLastModified text, UNIQUE (source, target))"
+	createDupesTable     = "CREATE TABLE IF NOT EXISTS main.dupes (source text NOT NULL, target text NOT NULL, passType text NOT NULL, obverseMatchedOn text NOT NULL, inverse boolean, sourceCreatedBy text, targetCreatedBy text, sourceLastModifiedBy text, targetLastModifiedBy text, sourceCreated text, targetCreated text, sourceLastModified text, targetLastModified text, UNIQUE (source, target))"
 	createParentIdx      = "CREATE INDEX IF NOT EXISTS main.parent_index ON containers (parent)"
 	selectContainerByUri = "SELECT container FROM main.containers WHERE container=?"
 	selectStateByUri     = "SELECT state FROM main.containers WHERE container=?"
 	selectLdpcByUri      = "SELECT container, parent, pass, types FROM main.containers WHERE container=?"
 	//TODO inverse field
 	//selectInverseDupe    = "SELECT source,target FROM main.dupes WHERE source=? and target=?"
-	updateStateByUri     = "UPDATE main.containers SET state = ? WHERE container = ?"
-	updateContainerByUri = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
-	insertState          = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
-	insertContainer      = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
-	insertDupe           = "INSERT INTO main.dupes (source, target, passType, matchedOn, sourceCreatedBy, targetCreatedBy, sourceLastModifiedBy, targetLastModifiedBy, sourceCreated, targetCreated, sourceLastModified, targetLastModified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	updateStateByUri      = "UPDATE main.containers SET state = ? WHERE container = ?"
+	updateContainerByUri  = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
+	insertState           = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
+	insertContainer       = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
+	insertDupe            = "INSERT INTO main.dupes (source, target, passType, obverseMatchedOn, sourceCreatedBy, targetCreatedBy, sourceLastModifiedBy, targetLastModifiedBy, sourceCreated, targetCreated, sourceLastModified, targetLastModified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	updateDupeWithInverse = "UPDATE main.dupes SET inverse = true, targetCreatedBy = ?, targetCreated = ?, targetLastModified = ?, targetLastModifiedBy = ? WHERE source = ? AND target = ?"
+	selectDupeForInverse  = "SELECT 1 from main.dupes where source = ? AND target = ?"
+	selectCountFromDupes  = "SELECT count(*) from main.dupes"
 	// TODO? selectChildren        = "SELECT container FROM main.containers WHERE parent=?"
 )
 
@@ -74,6 +77,32 @@ func NewSqlLiteStore(dsn string, params SqliteParams, ctx context.Context) (Stor
 
 	var db *sql.DB
 	var err error
+
+	//sqlite3conn := []*sqlite3.SQLiteConn{}
+	//sql.Register("sqlite3_with_hook_example",
+	//	&sqlite3.SQLiteDriver{
+	//		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+	//			sqlite3conn = append(sqlite3conn, conn)
+	//			conn.RegisterCommitHook(func() int {
+	//				log.Println("Executing commit")
+	//				return 0
+	//			})
+	//			conn.RegisterRollbackHook(func() {
+	//				log.Println("Executing rollback")
+	//			})
+	//			conn.RegisterUpdateHook(func(op int, db string, table string, rowid int64) {
+	//				switch op {
+	//				case sqlite3.SQLITE_INSERT:
+	//					log.Println("Notified of insert on db", db, "table", table, "rowid", rowid)
+	//				case sqlite3.SQLITE_SELECT:
+	//					log.Println("Notified of select on db", db, "table", table, "rowid", rowid)
+	//				case sqlite3.SQLITE_UPDATE:
+	//					log.Println("Notified of update on db", db, "table", table, "rowid", rowid)
+	//				}
+	//			})
+	//			return nil
+	//		},
+	//	})
 
 	if db, err = sql.Open("sqlite3", dsn); err != nil {
 		log.Fatal(err.Error())
@@ -232,43 +261,64 @@ func (store sqlLiteEventStore) Retrieve(uri string) (State, error) {
 	return state, NewErrNoResults(selectStateByUri, "persistence", "Retrieve", uri)
 }
 
-func (store sqlLiteEventStore) StoreDupe(sourceUri, targetUri, passType string, matchedOn []string, attribs DupeContainerAttributes) error {
+func (store sqlLiteEventStore) StoreDupe(source, target, passType string, obverseMatchedOn []string, attribs DupeContainerAttributes) error {
 	var tx *sql.Tx
 	var err error
 
 	defer func() {
 		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
-			log.Printf("%v", NewErrTx(rollback, fmt.Sprintf("dupe: <%s> <%s>", sourceUri, targetUri), err, "persistence", "StoreDupe"))
+			log.Printf("%v", NewErrTx(rollback, fmt.Sprintf("dupe: <%s> <%s>", source, target), err, "persistence", "StoreDupe"))
 		}
 	}()
 
 	if tx, err = store.db.Begin(); err != nil {
-		return NewErrTx(begin, fmt.Sprintf("dupe: <%s> <%s>", sourceUri, targetUri), err, "persistence", "StoreDupe")
+		return NewErrTx(begin, fmt.Sprintf("dupe: <%s> <%s>", source, target), err, "persistence", "StoreDupe")
 	}
 
-	if _, err = tx.Exec(insertDupe, sourceUri, targetUri, passType, strings.Join(matchedOn, ","),
+	// Check if the inverse exists, if so, update the existing row and return
+	if inverseExists, err := hasInverse(tx, source, target); err != nil {
+		return err
+	} else if inverseExists {
+
+		// set the inverse flag to true, and update the *target* in the database with the *source* from the match
+		// (since we are processing an inverse)
+		if _, err := tx.Exec(updateDupeWithInverse, attribs.SourceCreatedBy, attribs.SourceCreated,
+			attribs.SourceLastModified, attribs.SourceLastModifiedBy, target, source); err != nil {
+			return NewErrQuery(updateDupeWithInverse, err, "persistence", "StoreDupe",
+				attribs.SourceCreatedBy, attribs.SourceCreated.String(), attribs.SourceLastModified.String(),
+				attribs.SourceLastModifiedBy, target, source)
+		}
+
+		return commitTx(source, target, tx)
+	}
+
+	// If the inverse doesn't exist, we have a new dupe to insert
+	if _, err = tx.Exec(insertDupe, source, target, passType, strings.Join(obverseMatchedOn, ","),
 		attribs.SourceCreatedBy, attribs.TargetCreatedBy, attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy,
 		attribs.SourceCreated, attribs.TargetCreated, attribs.SourceLastModified, attribs.TargetLastModified); err != nil {
 
 		if sqliteErr, ok := err.(sqlite3.Error); ok {
 			if sqliteErr.Code == sqlite3.ErrConstraint {
-				return NewErrConstraint(insertDupe, err, "persistence", "StoreDupe", sourceUri, targetUri, passType,
-					strings.Join(matchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
+				return NewErrConstraint(insertDupe, err, "persistence", "StoreDupe", source, target, passType,
+					strings.Join(obverseMatchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
 					attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
 					attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
 			}
 		}
 
-		return NewErrQuery(insertDupe, err, "persistence", "StoreDupe", sourceUri, targetUri, passType,
-			strings.Join(matchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
+		return NewErrQuery(insertDupe, err, "persistence", "StoreDupe", source, target, passType,
+			strings.Join(obverseMatchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
 			attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
 			attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
 	}
 
-	if err := tx.Commit(); err != nil {
-		return NewErrTx(commit, fmt.Sprintf("dupe: <%s> <%s>", sourceUri, targetUri), err, "persistence", "StoreDupe")
-	}
+	return commitTx(source, target, tx)
+}
 
+func commitTx(source string, target string, tx *sql.Tx) error {
+	if err := tx.Commit(); err != nil {
+		return NewErrTx(commit, fmt.Sprintf("dupe: <%s> <%s>", source, target), err, "persistence", "StoreDupe")
+	}
 	return nil
 }
 
@@ -345,6 +395,17 @@ func (store sqlLiteEventStore) retrieveContainer(uri string) (model.LdpContainer
 	return model.LdpContainer{}, NewErrNoResults(selectLdpcByUri, "persistence", "retrieveContainer", uri)
 }
 
+func hasInverse(tx *sql.Tx, source, target string) (bool, error) {
+	var res int
+	if err := tx.QueryRow(selectDupeForInverse, target, source).Scan(&res); err != nil {
+		if err != sql.ErrNoRows {
+			return false, NewErrQuery(selectDupeForInverse, err, "persistence", "StoreDupe", source, target)
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
 func marshalPassProperties(c model.LdpContainer, props *bytes.Buffer) error {
 	if result, err := json.Marshal(c.PassProperties()); err != nil {
 		return NewErrSerializeContainer(err, c.Uri(), "persistence", "marshalPassProperties")
@@ -353,4 +414,18 @@ func marshalPassProperties(c model.LdpContainer, props *bytes.Buffer) error {
 	}
 
 	return nil
+}
+
+func newErrConstraint(source string, target string, passType string, obverseMatchedOn []string, attribs DupeContainerAttributes, err error) StoreErr {
+	return NewErrConstraint(insertDupe, err, "persistence", "StoreDupe", source, target, passType,
+		strings.Join(obverseMatchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
+		attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
+		attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
+}
+
+func newErrQuery(source string, target string, passType string, obverseMatchedOn []string, attribs DupeContainerAttributes, err error) StoreErr {
+	return NewErrQuery(insertDupe, err, "persistence", "StoreDupe", source, target, passType,
+		strings.Join(obverseMatchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
+		attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
+		attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
 }
