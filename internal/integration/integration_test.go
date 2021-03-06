@@ -328,18 +328,11 @@ func findDuplicatePublicationsAndUsers(t *testing.T) {
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
 
-	visitor := visit.New(retriever, maxReq)
-	controller := visitController{}
-	controller.errorHandler(func(e error) {
-		log.Printf(">> Error: %s", e.Error())
-	})
-	controller.eventHandler(func(e visit.Event) {
-		// noop
-	})
-
-	controller.containerHandler(containerHandler)
-
-	controller.begin(visitor, environment.FcrepoBaseUri, acceptFn, filterFn)
+	controller := visit.NewController(retriever, maxReq)
+	controller.ErrorHandler(visit.LogErrorHandler)
+	controller.EventHandler(visit.NoopEventHandler)
+	controller.ContainerHandler(containerHandler)
+	controller.Begin(environment.FcrepoBaseUri, acceptFn, filterFn)
 }
 
 func findDuplicateAllTheRest(t *testing.T) {
@@ -466,18 +459,11 @@ func findDuplicateAllTheRest(t *testing.T) {
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
 
-	visitor := visit.New(retriever, maxReq)
-	controller := visitController{}
-	controller.errorHandler(func(e error) {
-		log.Printf(">> Error: %s", e.Error())
-	})
-	controller.eventHandler(func(e visit.Event) {
-		// noop
-	})
-
-	controller.containerHandler(containerHandler)
-
-	controller.begin(visitor, environment.FcrepoBaseUri, acceptFn, filterFn)
+	controller := visit.NewController(retriever, maxReq)
+	controller.ErrorHandler(visit.LogErrorHandler)
+	controller.EventHandler(visit.NoopEventHandler)
+	controller.ContainerHandler(containerHandler)
+	controller.Begin(environment.FcrepoBaseUri, acceptFn, filterFn)
 }
 
 func findDuplicateSubmission(t *testing.T) {
@@ -743,21 +729,15 @@ func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passT
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
 
-	visitor := visit.New(retriever, maxReq)
-	controller := visitController{}
-	controller.errorHandler(func(e error) {
-		log.Printf(">> Error: %s", e.Error())
-	})
-	controller.eventHandler(func(e visit.Event) {
-		log.Printf(">> Event: %v", e)
-	})
+	controller := visit.NewController(retriever, maxReq)
+	controller.ErrorHandler(visit.LogErrorHandler)
+	controller.EventHandler(visit.LogEventHandler)
 	if containerHandler == nil {
-		controller.containerHandler(defaultContainerHandler(t, queryPlan, passType, matchHandler))
+		controller.ContainerHandler(defaultContainerHandler(t, queryPlan, passType, matchHandler))
 	} else {
-		controller.containerHandler(containerHandler)
+		controller.ContainerHandler(containerHandler)
 	}
-
-	controller.begin(visitor, startUri, visit.AcceptAllFilter, visit.AcceptAllFilter)
+	controller.Begin(startUri, visit.AcceptAllFilter, visit.AcceptAllFilter)
 }
 
 var defaultContainerHandler = func(t *testing.T, queryPlan query.Plan, passType string, matchHandler func(result interface{}) (bool, error)) func(c model.LdpContainer) {
@@ -774,74 +754,4 @@ var defaultContainerHandler = func(t *testing.T, queryPlan query.Plan, passType 
 			}
 		}
 	}
-}
-
-type visitController struct {
-	wg              sync.WaitGroup
-	errorReader     func(e error)
-	eventReader     func(e visit.Event)
-	containerReader func(c model.LdpContainer)
-}
-
-func (cr *visitController) errorHandler(handler func(error)) {
-	if cr.errorReader != nil {
-		panic("illegal state: existing error handler")
-	}
-	cr.wg.Add(1)
-	cr.errorReader = handler
-}
-
-func (cr *visitController) eventHandler(handler func(visit.Event)) {
-	if cr.eventReader != nil {
-		panic("illegal state: existing event handler")
-	}
-	cr.wg.Add(1)
-	cr.eventReader = handler
-}
-
-func (cr *visitController) containerHandler(handler func(model.LdpContainer)) {
-	if cr.containerReader != nil {
-		panic("illegal state: existing container handler")
-	}
-	cr.wg.Add(1)
-	cr.containerReader = handler
-}
-
-func (cr *visitController) begin(visitor visit.ConcurrentVisitor, startingUri string, acceptFn func(container model.LdpContainer) bool, filterFn func(container model.LdpContainer) bool) {
-	if cr.errorReader != nil {
-		go func() {
-			for err := range visitor.Errors {
-				cr.errorReader(err)
-			}
-			cr.wg.Done()
-		}()
-	}
-
-	if cr.eventReader != nil {
-		go func() {
-			for event := range visitor.Events {
-				cr.eventReader(event)
-			}
-
-			cr.wg.Done()
-		}()
-	}
-
-	if cr.containerReader != nil {
-		go func() {
-			for container := range visitor.Containers {
-				cr.containerReader(container)
-			}
-
-			cr.wg.Done()
-		}()
-	}
-
-	cr.wg.Add(1)
-	go func() {
-		visitor.Walk(startingUri, filterFn, acceptFn)
-		cr.wg.Done()
-	}()
-
-	cr.wg.Wait()
 }
