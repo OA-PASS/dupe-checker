@@ -35,6 +35,10 @@ type Event struct {
 	Message   string
 }
 
+func (e Event) String() string {
+	return fmt.Sprintf("event type: %s target: %s message: %s", e.EventType, e.Target, e.Message)
+}
+
 type Visitor interface {
 	// Perform a depth-first traversal of LDP resources beginning with the 'startUri'.  The 'filter' and 'accept'
 	// functions act as follows:
