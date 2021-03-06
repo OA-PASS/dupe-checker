@@ -18,6 +18,7 @@ package query
 
 import (
 	"bytes"
+	"dupe-checker/env"
 	"dupe-checker/model"
 	"encoding/json"
 	"errors"
@@ -301,6 +302,7 @@ func performQuery(query string, esClient ElasticSearchClient, keys []string) (Ma
 	var err error
 	var req *http.Request
 	var res *http.Response
+	var env = env.New()
 
 	if req, err = http.NewRequest("GET", query, nil); err != nil {
 		return Match{}, err
@@ -356,9 +358,11 @@ func performQuery(query string, esClient ElasticSearchClient, keys []string) (Ma
 	}
 
 	m := Match{
-		QueryUrl:    query,
-		HitCount:    hits.Hits.Total,
-		MatchFields: keys,
+		fedoraBaseUri: env.FcrepoBaseUri,
+		indexBaseUri:  env.FcrepoIndexBaseUri,
+		QueryUrl:      query,
+		HitCount:      hits.Hits.Total,
+		MatchFields:   keys,
 	}
 
 	log.Printf("executed query %s with result %v", query, m)
