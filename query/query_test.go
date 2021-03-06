@@ -98,6 +98,40 @@ func Test_MatchUriPathsEqual(t *testing.T) {
 	assert.True(t, m.UriPathsEqual(frontPorch, frontPorch))
 
 	assert.True(t, m.UriPathsEqual(backPorch, backPorch))
+
+	m = Match{}
+
+	assert.Panics(t, func() {
+		m.UriPathsEqual(backPorch, frontPorch)
+	})
+}
+
+func Test_MatchStripBaseUri(t *testing.T) {
+	path := "/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054"
+	backPorch := "http://fcrepo:8080/fcrepo/rest" + path
+	frontPorch := "http://localhost:9090/fcrepo/rest" + path
+
+	m := Match{
+		fedoraBaseUri: "http://localhost:9090/fcrepo/rest",
+		indexBaseUri:  "http://fcrepo:8080/fcrepo/rest",
+	}
+
+	assert.Equal(t, path, m.StripBaseUri(backPorch))
+	assert.Equal(t, path, m.StripBaseUri(frontPorch))
+
+	m = Match{
+		fedoraBaseUri: "http://localhost:9090/fcrepo/rest",
+		indexBaseUri:  "http://localhost:9090/fcrepo/rest",
+	}
+
+	assert.Equal(t, path, m.StripBaseUri(frontPorch))
+	assert.Equal(t, backPorch, m.StripBaseUri(backPorch)) // untouched
+
+	m = Match{}
+
+	assert.Panics(t, func() {
+		m.StripBaseUri(backPorch)
+	})
 }
 
 // insures that the Children() method of planBuilderImpl properly recurses child plans, including templates

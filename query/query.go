@@ -169,9 +169,23 @@ func (m *Match) UriPathsEqual(a, b string) bool {
 	if strings.TrimSpace(m.fedoraBaseUri) == "" || strings.TrimSpace(m.indexBaseUri) == "" {
 		panic("cannot compare URI paths, as the base uri to strip are not set")
 	}
-	a = strip(a, m.fedoraBaseUri, m.indexBaseUri)
-	b = strip(b, m.fedoraBaseUri, m.indexBaseUri)
+	a = m.StripBaseUri(a)
+	b = m.StripBaseUri(b)
 	return a == b
+}
+
+// Strips the back and front porch Fedora base URIs from the supplied URI, and returns the remaining URL path.  The
+// front and back porch base URIs are kept as internal state, initialized when the Match is created. Typically the front
+// and back porch base URIs come from the environment.
+//
+// If the necessary internal state is not present on Match, this method panics.
+//
+// If a supplied URI does not contain either prefix, the entire URI will be used for comparison
+func (m *Match) StripBaseUri(uri string) string {
+	if strings.TrimSpace(m.fedoraBaseUri) == "" || strings.TrimSpace(m.indexBaseUri) == "" {
+		panic("cannot compare URI paths, as the base uri to strip are not set")
+	}
+	return strip(uri, m.fedoraBaseUri, m.indexBaseUri)
 }
 
 // trims the prefixes from the supplied string
