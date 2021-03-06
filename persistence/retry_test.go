@@ -24,6 +24,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,6 +33,7 @@ const (
 	storeContainer = iota
 	storeUri
 	retrieve
+	storeDupe
 )
 
 type call int
@@ -83,6 +85,19 @@ func (p *probe) Retrieve(uri string) (State, error) {
 	}
 
 	panic("No return value satisfies signature (State, error)")
+}
+
+func (p *probe) StoreDupe(sourceUri, targetUri, passType string, matchedOn []string, attribs DupeContainerAttributes) error {
+	p.invoked = storeDupe
+
+	// TODO: sloppy serialization, may need to refactor to accept interfaces or re-think
+	p.withArgs = []string{sourceUri, targetUri, passType, strings.Join(matchedOn, ","), fmt.Sprintf("%v", attribs)}
+
+	if p.retVal[0] != nil {
+		return (p.retVal[0]).(error)
+	}
+
+	return nil
 }
 
 func TestRetryStore_InvokesUnderlyingRetrieve(t *testing.T) {
