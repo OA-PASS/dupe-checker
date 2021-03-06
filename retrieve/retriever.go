@@ -1,4 +1,5 @@
 //
+//
 // Copyright 2021 Johns Hopkins University
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,6 +64,7 @@ func (r retriever) Get(uri string) (model.LdpContainer, error) {
 		req.Header.Add("Accept", NTriplesMediaType)
 	}
 
+	//log.Printf("retrieving %s", uri)
 	if res, err = r.httpClient.Do(req); err != nil {
 		return model.LdpContainer{}, fmt.Errorf("retriever: error executing GET %s: %w", uri, err)
 	}
