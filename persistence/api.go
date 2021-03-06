@@ -163,6 +163,16 @@ func NewErrMaxRetry(underlying error, tries int) StoreErr {
 	}
 }
 
+var ErrConstraint = errors.New("constraint violation")
+
+func NewErrConstraint(query string, underlying error, pkg string, method string, placeholders ...string) StoreErr {
+	return StoreErr{
+		Message:    fmt.Sprintf("%s %s: constraint violation when performing query '%s' (%s), %v", pkg, method, query, strings.Join(placeholders, ","), underlying),
+		Wrapped:    ErrConstraint,
+		Underlying: underlying,
+	}
+}
+
 type State int
 
 const (
