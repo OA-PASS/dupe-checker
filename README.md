@@ -2,6 +2,8 @@
 
 The PASS Resource Duplicate Checker traverses a Fedora repository containing PASS resources, and for each resource, determines if a duplicate exists by performing queries of the Elastic Search index.  Results from the process are persisted in a local Sqlite database.  The identity properties used for determining duplication are documented below.
 
+Design-wise, PASS-RDC could have (should have?) been coded to work primarily with the index, using it as a source of truth.  Since the index does not contain auditing information like dates and creators, the duplicates would need to be retrieved from Fedora at the end of the process to fill in those necessary details used for analysis.  A future TODO :)
+
 ## Known Issues and TODOs
 
 Presented in approximate priority order with respect to resolution.
