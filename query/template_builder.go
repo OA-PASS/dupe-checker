@@ -224,13 +224,25 @@ func (qt Template) eval(kvp []KvPair) (string, error) {
 		return "", fmt.Errorf("query: cannot evaluate template, empty key-value pairs for %v (error extracting keys from the LdpContainer?)", qt)
 	}
 	buf := &bytes.Buffer{}
+	//FIXME
+	e := env.New()
+	var scheme, hostandport, index string
+
+	if u, err := url.Parse(e.IndexSearchBaseUri); err != nil {
+		panic(fmt.Sprintf("Cannot parse %s as a URL: %s", e.IndexSearchBaseUri, err.Error()))
+	} else {
+		scheme = u.Scheme
+		hostandport = u.Host
+		temp := e.IndexSearchBaseUri[0:strings.LastIndex(e.IndexSearchBaseUri, "/_search")]
+		index = temp[strings.LastIndex(temp, "/")+1:]
+	}
 
 	if err := qt.Template.Execute(buf, struct {
 		Scheme      string
 		HostAndPort string
 		Index       string
 		KvPairs     []KvPair
-	}{"http", "elasticsearch.local:9200", "pass", kvp}); err != nil {
+	}{scheme, hostandport, index, kvp}); err != nil {
 		return "", err
 	} else {
 		return buf.String(), nil
