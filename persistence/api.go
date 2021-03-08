@@ -197,5 +197,5 @@ type Store interface {
 	StoreContainer(c model.LdpContainer, s State) error
 	StoreUri(containerUri string, s State) error
 	Retrieve(uri string) (State, error)
-	StoreDupe(source, target, passType string, matchedOn []string, attribs DupeContainerAttributes) error
+	StoreDupe(source, target, passType string, matchedOn, matchedValues []string, attribs DupeContainerAttributes) error
 }

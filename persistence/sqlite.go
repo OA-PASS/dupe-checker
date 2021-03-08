@@ -35,7 +35,7 @@ import (
 const (
 	createContainersTable = "CREATE TABLE IF NOT EXISTS main.containers (container text UNIQUE NOT NULL, parent text, pass text, types text, state integer NOT NULL)"
 	// if we need the times in this table to be processed as timestamps, we can change the type to 'numeric'
-	createDupesTable     = "CREATE TABLE IF NOT EXISTS main.dupes (source text NOT NULL, target text NOT NULL, passType text NOT NULL, obverseMatchedOn text NOT NULL, inverse boolean, sourceCreatedBy text, targetCreatedBy text, sourceLastModifiedBy text, targetLastModifiedBy text, sourceCreated text, targetCreated text, sourceLastModified text, targetLastModified text, UNIQUE (source, target))"
+	createDupesTable     = "CREATE TABLE IF NOT EXISTS main.dupes (source text NOT NULL, target text NOT NULL, passType text NOT NULL, obverseMatchedOn text NOT NULL, obverseMatchedValues text, inverse boolean, sourceCreatedBy text, targetCreatedBy text, sourceLastModifiedBy text, targetLastModifiedBy text, sourceCreated text, targetCreated text, sourceLastModified text, targetLastModified text, UNIQUE (source, target))"
 	createParentIdx      = "CREATE INDEX IF NOT EXISTS main.parent_index ON containers (parent)"
 	selectContainerByUri = "SELECT container FROM main.containers WHERE container=?"
 	selectStateByUri     = "SELECT state FROM main.containers WHERE container=?"
@@ -46,7 +46,7 @@ const (
 	updateContainerByUri  = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
 	insertState           = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
 	insertContainer       = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
-	insertDupe            = "INSERT INTO main.dupes (source, target, passType, obverseMatchedOn, sourceCreatedBy, targetCreatedBy, sourceLastModifiedBy, targetLastModifiedBy, sourceCreated, targetCreated, sourceLastModified, targetLastModified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	insertDupe            = "INSERT INTO main.dupes (source, target, passType, obverseMatchedOn, obverseMatchedValues, sourceCreatedBy, targetCreatedBy, sourceLastModifiedBy, targetLastModifiedBy, sourceCreated, targetCreated, sourceLastModified, targetLastModified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	updateDupeWithInverse = "UPDATE main.dupes SET inverse = true, targetCreatedBy = ?, targetCreated = ?, targetLastModified = ?, targetLastModifiedBy = ? WHERE source = ? AND target = ?"
 	selectDupeForInverse  = "SELECT 1 from main.dupes where source = ? AND target = ?"
 	selectCountFromDupes  = "SELECT count(*) from main.dupes"
@@ -261,7 +261,7 @@ func (store sqlLiteEventStore) Retrieve(uri string) (State, error) {
 	return state, NewErrNoResults(selectStateByUri, "persistence", "Retrieve", uri)
 }
 
-func (store sqlLiteEventStore) StoreDupe(source, target, passType string, obverseMatchedOn []string, attribs DupeContainerAttributes) error {
+func (store sqlLiteEventStore) StoreDupe(source, target, passType string, obverseMatchedOn, obverseMatchedValues []string, attribs DupeContainerAttributes) error {
 	var tx *sql.Tx
 	var err error
 
@@ -294,22 +294,25 @@ func (store sqlLiteEventStore) StoreDupe(source, target, passType string, obvers
 
 	// If the inverse doesn't exist, we have a new dupe to insert
 	if _, err = tx.Exec(insertDupe, source, target, passType, strings.Join(obverseMatchedOn, ","),
-		attribs.SourceCreatedBy, attribs.TargetCreatedBy, attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy,
-		attribs.SourceCreated, attribs.TargetCreated, attribs.SourceLastModified, attribs.TargetLastModified); err != nil {
+		strings.Join(obverseMatchedValues, ";"), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
+		attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated, attribs.TargetCreated,
+		attribs.SourceLastModified, attribs.TargetLastModified); err != nil {
 
 		if sqliteErr, ok := err.(sqlite3.Error); ok {
 			if sqliteErr.Code == sqlite3.ErrConstraint {
 				return NewErrConstraint(insertDupe, err, "persistence", "StoreDupe", source, target, passType,
-					strings.Join(obverseMatchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
-					attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
-					attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
+					strings.Join(obverseMatchedOn, ","), strings.Join(obverseMatchedValues, ";"),
+					attribs.SourceCreatedBy, attribs.TargetCreatedBy, attribs.SourceLastModifiedBy,
+					attribs.TargetLastModifiedBy, attribs.SourceCreated.String(), attribs.TargetCreated.String(),
+					attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
 			}
 		}
 
 		return NewErrQuery(insertDupe, err, "persistence", "StoreDupe", source, target, passType,
-			strings.Join(obverseMatchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
-			attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
-			attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
+			strings.Join(obverseMatchedOn, ","), strings.Join(obverseMatchedValues, ";"),
+			attribs.SourceCreatedBy, attribs.TargetCreatedBy, attribs.SourceLastModifiedBy,
+			attribs.TargetLastModifiedBy, attribs.SourceCreated.String(), attribs.TargetCreated.String(),
+			attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
 	}
 
 	return commitTx(source, target, tx)
@@ -416,16 +419,18 @@ func marshalPassProperties(c model.LdpContainer, props *bytes.Buffer) error {
 	return nil
 }
 
-func newErrConstraint(source string, target string, passType string, obverseMatchedOn []string, attribs DupeContainerAttributes, err error) StoreErr {
+func newErrConstraint(source string, target string, passType string, obverseMatchedOn []string, obverseMatchedValues []string, attribs DupeContainerAttributes, err error) StoreErr {
 	return NewErrConstraint(insertDupe, err, "persistence", "StoreDupe", source, target, passType,
-		strings.Join(obverseMatchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
-		attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
-		attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
+		strings.Join(obverseMatchedOn, ","), strings.Join(obverseMatchedValues, ";"), attribs.SourceCreatedBy,
+		attribs.TargetCreatedBy, attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy,
+		attribs.SourceCreated.String(), attribs.TargetCreated.String(), attribs.SourceLastModified.String(),
+		attribs.TargetLastModified.String())
 }
 
-func newErrQuery(source string, target string, passType string, obverseMatchedOn []string, attribs DupeContainerAttributes, err error) StoreErr {
+func newErrQuery(source string, target string, passType string, obverseMatchedOn []string, obverseMatchedValues []string, attribs DupeContainerAttributes, err error) StoreErr {
 	return NewErrQuery(insertDupe, err, "persistence", "StoreDupe", source, target, passType,
-		strings.Join(obverseMatchedOn, ","), attribs.SourceCreatedBy, attribs.TargetCreatedBy,
+		strings.Join(obverseMatchedOn, ","), strings.Join(obverseMatchedValues, ";"),
+		attribs.SourceCreatedBy, attribs.TargetCreatedBy,
 		attribs.SourceLastModifiedBy, attribs.TargetLastModifiedBy, attribs.SourceCreated.String(),
 		attribs.TargetCreated.String(), attribs.SourceLastModified.String(), attribs.TargetLastModified.String())
 }

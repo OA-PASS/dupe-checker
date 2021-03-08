@@ -191,10 +191,10 @@ func Test_StoreDupeConstraint(t *testing.T) {
 	store, err := NewSqlLiteStore(dsn, SqliteParams{}, nil)
 	assert.Nil(t, err)
 
-	err = store.StoreDupe("source", "target", "Publication", []string{"doi"}, DupeContainerAttributes{})
+	err = store.StoreDupe("source", "target", "Publication", []string{"doi"}, []string{"10.5860/crln.78.1.9605"}, DupeContainerAttributes{})
 	assert.Nil(t, err)
 
-	err = store.StoreDupe("source", "target", "Publication", []string{"doi"}, DupeContainerAttributes{})
+	err = store.StoreDupe("source", "target", "Publication", []string{"doi"}, []string{"10.5860/crln.78.1.9605"}, DupeContainerAttributes{})
 	assert.NotNil(t, err)
 	assert.True(t, errors.Is(err, ErrConstraint))
 
@@ -202,12 +202,12 @@ func Test_StoreDupeConstraint(t *testing.T) {
 	// old behavior was that a new row would be created which contains the type and matchesOn
 	// consequence is that the the matchesOn field is only valid for the obverse relationship.  it is possible that the
 	// inverse relationship matched on something else.
-	err = store.StoreDupe("target", "source", "Publication", []string{"doi"}, DupeContainerAttributes{})
+	err = store.StoreDupe("target", "source", "Publication", []string{"doi"}, []string{"10.5860/crln.78.1.9605"}, DupeContainerAttributes{})
 	assert.Nil(t, err)
 
 	// FIXME note that attempting to store the inverse of a dupe multiple times does not raise a constraint violation
 	// This means that the target container attributes in the row is overwritten but otherwise info remains the same.
-	err = store.StoreDupe("target", "source", "Publication", []string{"doi"}, DupeContainerAttributes{})
+	err = store.StoreDupe("target", "source", "Publication", []string{"doi"}, []string{"10.5860/crln.78.1.9605"}, DupeContainerAttributes{})
 	assert.Nil(t, err)
 }
 
@@ -239,7 +239,7 @@ func Test_StoreDupeInverse(t *testing.T) {
 	}
 
 	// insert the obverse dupe
-	err = store.StoreDupe("source", "target", "Publication", []string{"nlmta"}, DupeContainerAttributes{
+	err = store.StoreDupe("source", "target", "Publication", []string{"nlmta"}, []string{"Jor Nat"}, DupeContainerAttributes{
 		SourceCreatedBy:      "obverse sourceCreatedBy",
 		SourceLastModifiedBy: "obverse sourceLastModifiedBy",
 		SourceCreated:        time.Now(),
@@ -260,7 +260,7 @@ func Test_StoreDupeInverse(t *testing.T) {
 	}
 
 	// insert the inverse dupe.  This should not create a new row, instead the inverse flag should be flipped
-	err = store.StoreDupe("target", "source", "Publication", []string{"nlmta"}, DupeContainerAttributes{
+	err = store.StoreDupe("target", "source", "Publication", []string{"nlmta"}, []string{"Jor Nat"}, DupeContainerAttributes{
 		SourceCreatedBy:      "inverse sourceCreatedBy",
 		SourceLastModifiedBy: "inverse sourceLastModifiedBy",
 		SourceCreated:        time.Now(),

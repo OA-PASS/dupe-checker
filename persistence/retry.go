@@ -60,9 +60,9 @@ func (rs retryStore) Retrieve(uri string) (State, error) {
 	return rs.underlyingStore.Retrieve(uri)
 }
 
-func (rs retryStore) StoreDupe(sourceUri, targetUri, passType string, matchedOn []string, attribs DupeContainerAttributes) error {
+func (rs retryStore) StoreDupe(sourceUri, targetUri, passType string, matchedOn, matchedValues []string, attribs DupeContainerAttributes) error {
 	return rs.retry(rs.maxTries, rs.retryInterval, func() error {
-		return rs.underlyingStore.StoreDupe(sourceUri, targetUri, passType, matchedOn, attribs)
+		return rs.underlyingStore.StoreDupe(sourceUri, targetUri, passType, matchedOn, matchedValues, attribs)
 	})
 }
 

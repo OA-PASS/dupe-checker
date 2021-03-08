@@ -248,7 +248,7 @@ func findDuplicatePublicationsAndUsers(t *testing.T) {
 		}
 
 		for candidateDupe, _ := range candidateDupes {
-			if err := store.StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, persistence.DupeContainerAttributes{
+			if err := store.StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, match.MatchValues[candidateDupe], persistence.DupeContainerAttributes{
 				SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
 				SourceCreated:        match.ContainerProperties.SourceCreated,
 				SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
@@ -366,7 +366,7 @@ func findDuplicateAllTheRest(t *testing.T) {
 		}
 
 		for candidateDupe, _ := range candidateDupes {
-			if err := store.StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, persistence.DupeContainerAttributes{
+			if err := store.StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, match.MatchValues[candidateDupe], persistence.DupeContainerAttributes{
 				SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
 				SourceCreated:        match.ContainerProperties.SourceCreated,
 				SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
