@@ -149,6 +149,8 @@ type Match struct {
 	MatchingUris []string
 	// These are the fields of the PASS resource that were matched by the query
 	MatchFields []string
+	// These are the values of the fields that were matched by the query, keyed by MatchingUris
+	MatchValues map[string][]string
 	// Properties of the container that may be useful for auditing
 	ContainerProperties struct {
 		SourceCreatedBy,

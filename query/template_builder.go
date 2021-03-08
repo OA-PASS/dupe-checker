@@ -312,7 +312,7 @@ func extractKeys(container model.LdpContainer, keys []string) ([]KvPair, error) 
 }
 
 // Executes the provided ES query string and returns the number of hits.
-func performQuery(query string, esClient ElasticSearchClient, keys []string) (Match, error) {
+func performQuery(query string, esClient ElasticSearchClient, keys []KvPair) (Match, error) {
 	var err error
 	var req *http.Request
 	var res *http.Response
@@ -360,9 +360,7 @@ func performQuery(query string, esClient ElasticSearchClient, keys []string) (Ma
 		Hits struct {
 			Total int
 			Hits  []struct {
-				Source struct {
-					Id string `json:"@id"`
-				} `json:"_source"`
+				Source map[string]interface{} `json:"_source"`
 			}
 		}
 	}{}
@@ -371,12 +369,18 @@ func performQuery(query string, esClient ElasticSearchClient, keys []string) (Ma
 		return Match{}, fmt.Errorf("query: unable to unmarshal body of request '%s': %w", query, err)
 	}
 
+	var matchFields []string
+	for _, kvp := range keys {
+		matchFields = append(matchFields, kvp.Key.String())
+	}
+
 	m := Match{
 		fedoraBaseUri: env.FcrepoBaseUri,
 		indexBaseUri:  env.FcrepoIndexBaseUri,
 		QueryUrl:      query,
 		HitCount:      hits.Hits.Total,
-		MatchFields:   keys,
+		MatchFields:   matchFields,
+		MatchValues:   make(map[string][]string),
 	}
 
 	log.Printf("executed query %s with result %v", query, m)
@@ -386,7 +390,18 @@ func performQuery(query string, esClient ElasticSearchClient, keys []string) (Ma
 	}
 
 	for _, hit := range hits.Hits.Hits {
-		m.MatchingUris = append(m.MatchingUris, hit.Source.Id)
+		matchedUri := hit.Source["@id"].(string)
+		m.MatchingUris = append(m.MatchingUris, matchedUri)
+		var matchValues []string
+		for _, kvp := range keys {
+			switch hit.Source[kvp.Key.IndexField()].(type) {
+			case string:
+				matchValues = append(matchValues, hit.Source[kvp.Key.IndexField()].(string))
+			case []string:
+				matchValues = append(matchValues, strings.Join(hit.Source[kvp.Key.IndexField()].([]string), ","))
+			}
+		}
+		m.MatchValues[matchedUri] = matchValues
 	}
 
 	// m.PassUri, m.PassType and any m.ContainerProperties are provided by the caller
@@ -415,7 +430,7 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 		// invoke query, obtain result.
 		if match, err := performQuery(query, ElasticSearchClient{
 			http.Client{},
-		}, qt.Keys); err != nil {
+		}, keys); err != nil {
 			return true, err
 		} else {
 			//match.PassType = container.
