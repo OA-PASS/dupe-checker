@@ -369,9 +369,16 @@ func performQuery(query string, esClient ElasticSearchClient, keys []KvPair) (Ma
 		return Match{}, fmt.Errorf("query: unable to unmarshal body of request '%s': %w", query, err)
 	}
 
-	var matchFields []string
+	// Get the *unique* list of keys
+	matchFieldsMap := make(map[string]int)
 	for _, kvp := range keys {
-		matchFields = append(matchFields, kvp.Key.String())
+		if _, exists := matchFieldsMap[kvp.Key.String()]; !exists {
+			matchFieldsMap[kvp.Key.String()] = 1
+		}
+	}
+	var matchFields []string
+	for k, _ := range matchFieldsMap {
+		matchFields = append(matchFields, k)
 	}
 
 	m := Match{
