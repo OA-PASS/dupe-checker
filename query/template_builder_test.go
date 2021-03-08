@@ -62,3 +62,9 @@ func Test_Eval(t *testing.T) {
 	assert.False(t, strings.Contains(query, "&amp;"))
 	assert.True(t, strings.Contains(query, "%20%26%20"))
 }
+
+func TestKeyList_KeySet(t *testing.T) {
+	list := KeyList([]KvPair{{Key("one"), "moo"}, {Key("one"), "boo"}, {Key("two"), "foo"}})
+	set := list.KeySet()
+	assert.EqualValues(t, []Key{Key("one"), Key("two")}, set)
+}

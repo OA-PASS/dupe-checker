@@ -613,6 +613,23 @@ func Test_DecodeHit(t *testing.T) {
 	*/
 }
 
+func Test_ExtractValuesFromHitSource(t *testing.T) {
+	hitSource := make(map[string]interface{})
+	json.Unmarshal(queryHit, &hitSource)
+
+	keySet := KeyList([]KvPair{{Key: "roles"}, {Key: "locatorIds"}, {Key: "email"}}).KeySet()
+	expectedRole := "submitter"
+	expectedLocatorids := "johnshopkins.edu:employeeid:00016197,johnshopkins.edu:hopkinsid:79DUP9,johnshopkins.edu:jhed:edaughe2"
+	expectedEmail := "edaughe2@johnshopkins.edu"
+
+	result := extractValuesFromHitSource(keySet, hitSource)
+
+	// Returned in order as they appear in the KeySet, arrays serialized as comma separated strings
+	assert.Equal(t, expectedRole, result[0])
+	assert.Equal(t, expectedLocatorids, result[1])
+	assert.Equal(t, expectedEmail, result[2])
+}
+
 func toArrayString(arrayint []interface{}) (result []string) {
 
 	for _, v := range arrayint {

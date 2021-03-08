@@ -118,19 +118,14 @@ type KeyList []KvPair
 
 // Returns a slice of unique Keys in the list
 func (kl KeyList) KeySet() KeySet {
-	resultMap := make(map[Key]int)
+	resultMap := make(map[Key]interface{})
 	var resultSlice []Key
 
 	for _, kvp := range kl {
-		if _, exists := resultMap[kvp.Key]; exists {
-			resultMap[kvp.Key]++
-		} else {
-			resultMap[kvp.Key] = 1
+		if _, exists := resultMap[kvp.Key]; !exists {
+			resultMap[kvp.Key] = nil
+			resultSlice = append(resultSlice, kvp.Key)
 		}
-	}
-
-	for k, _ := range resultMap {
-		resultSlice = append(resultSlice, k)
 	}
 
 	return resultSlice
@@ -414,25 +409,13 @@ func performQuery(query string, esClient ElasticSearchClient, keys []KvPair) (Ma
 		return m, nil
 	}
 
+	// for each hit:
+	//   store the matching uri in the slice Match.MatchingUris
+	//   store the matching values in the map Match.MatchValues, keyed by the MatchingUri.
 	for _, hit := range hits.Hits.Hits {
 		matchedUri := hit.Source["@id"].(string)
 		m.MatchingUris = append(m.MatchingUris, matchedUri)
-		var matchValues []string
-		for _, key := range KeyList(keys).KeySet() {
-			switch value := hit.Source[key.IndexField()].(type) {
-			case string:
-				matchValues = append(matchValues, value)
-			case []string:
-				matchValues = append(matchValues, strings.Join(value, ","))
-			case []interface{}:
-				var s []string
-				for _, v := range value {
-					s = append(s, v.(string))
-				}
-				matchValues = append(matchValues, strings.Join(s, ";"))
-			}
-		}
-		m.MatchValues[matchedUri] = matchValues
+		m.MatchValues[matchedUri] = extractValuesFromHitSource(KeyList(keys).KeySet(), hit.Source)
 	}
 
 	// m.PassUri, m.PassType and any m.ContainerProperties are provided by the caller
@@ -488,4 +471,62 @@ func (qt Template) Children() []Plan {
 
 func (qt Template) String() string {
 	return fmt.Sprintf("%T: Keys: %s, Template: %T@%p", qt, qt.Keys, qt.Template, &qt.Template)
+}
+
+// Expects a Hit _source JSON object like the following as a map[string]interface{}.  Extracts the values for each
+// key in the KeySet from the hit source map.  Each key in the KeySet will align with its values in the result slice;
+// e.g. the zeroth Key in the KeySet will have its values in the zeroth element of the result slice.
+//
+// {
+//  "firstName" : "Elizabeth",
+//  "lastName" : "Daugherty Biddison",
+//  "@type" : "User",
+//  "displayName" : "Elizabeth Daugherty Biddison",
+//  "roles" : [
+//    "submitter"
+//  ],
+//  "locatorIds" : [
+//    "johnshopkins.edu:employeeid:00016197",
+//    "johnshopkins.edu:hopkinsid:79DUP9",
+//    "johnshopkins.edu:jhed:edaughe2"
+//  ],
+//  "@id" : "https://pass.jhu.edu/fcrepo/rest/users/75/3a/e2/19/753ae219-63c2-4aef-a930-9e419734a279",
+//  "@context" : "https://oa-pass.github.io/pass-data-model/src/main/resources/context-3.1.jsonld",
+//  "email" : "edaughe2@johnshopkins.edu"
+//}
+func extractValuesFromHitSource(keys KeySet, hitSource map[string]interface{}) (result []string) {
+	for _, key := range keys {
+		if value, exists := hitSource[key.IndexField()]; !exists {
+			continue
+		} else {
+			switch t := value.(type) {
+			case string:
+				result = append(result, value.(string))
+			case map[string]interface{}:
+				// TODO
+			case []interface{}:
+				array := value.([]interface{})
+				var values []string
+				var sample interface{}
+				if len(array) == 0 {
+					continue
+				} else {
+					sample = array[0]
+				}
+				switch arrayType := sample.(type) {
+				case string:
+					for i := range array {
+						values = append(values, array[i].(string))
+					}
+					result = append(result, strings.Join(values, ",")) // TODO string join
+				default:
+					panic(fmt.Sprintf("Unhandled array type processing a Hit []interface{} in _source: %v", arrayType))
+				}
+			default:
+				panic(fmt.Sprintf("Unhandled type processing Hit _source JSON: %v", t))
+			}
+		}
+	}
+
+	return
 }
