@@ -60,5 +60,5 @@ func Test_Eval(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.False(t, strings.Contains(query, "&amp;"))
-	assert.True(t, strings.Contains(query, "%20&%20"))
+	assert.True(t, strings.Contains(query, "%20%26%20"))
 }
