@@ -18,6 +18,7 @@ package query
 
 import (
 	"dupe-checker/model"
+	"dupe-checker/persistence"
 	"errors"
 	"fmt"
 	"strings"
@@ -36,6 +37,7 @@ type planBuilderImpl struct {
 	children  []*planBuilderImpl
 	templates []*tmplBuilderImpl
 	active    *tmplBuilderImpl
+	store *persistence.Store
 }
 
 func (pb *planBuilderImpl) Children() []Plan {
@@ -68,8 +70,8 @@ func (pb *planBuilderImpl) string(sb *strings.Builder, leadIndent, indent string
 	return sb.String()
 }
 
-func newPlanBuilder() *planBuilderImpl {
-	return &planBuilderImpl{}
+func newPlanBuilder(store *persistence.Store) *planBuilderImpl {
+	return &planBuilderImpl{store: store}
 }
 
 func (pb *planBuilderImpl) addChildPlanBuilder(op QueryOp) *planBuilderImpl {
@@ -79,7 +81,7 @@ func (pb *planBuilderImpl) addChildPlanBuilder(op QueryOp) *planBuilderImpl {
 }
 
 func (pb *planBuilderImpl) addTemplateBuilder() *tmplBuilderImpl {
-	tb := newTmplBuilder()
+	tb := newTmplBuilder(pb.store)
 	pb.templates = append(pb.templates, &tb)
 	pb.active = &tb
 	return &tb

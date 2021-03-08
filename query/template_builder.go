@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"dupe-checker/env"
 	"dupe-checker/model"
+	"dupe-checker/persistence"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,15 +79,26 @@ type Key string
 // Whether or not the Key may have multiple values.  For example, 'issn' or 'locatorIds' may have multiple values in
 // PASS model.  The Key will have an asterisk as a suffix if this is the case.
 func (k Key) IsMulti() bool {
-	return strings.HasSuffix(string(k), "*")
+	s := string(k)
+	return strings.HasSuffix(s, "*") ||
+		strings.HasSuffix(s, "*=")
+}
+
+// Whether or not the value for the key requires expansion
+func (k Key) RequiresExpansion() bool {
+	s := string(k)
+	return strings.HasSuffix(s, "=") ||
+		strings.HasSuffix(s, "=*")
 }
 
 // Answers the string representation of the Key, which conforms to the RDF predicate it is derived from.  For example,
-// this method will answer 'issn' for the Key("issn*").
+// this method will answer 'issn' for the Key("issn*"), or 'publication' for the Key("publication*=").
 func (k Key) String() string {
 	s := string(k)
-	if k.IsMulti() {
+	if k.IsMulti() && !k.RequiresExpansion() {
 		return s[0 : len(s)-1]
+	} else if k.IsMulti() && k.RequiresExpansion() {
+		return s[0 : len(s)-2]
 	}
 	return s
 }
@@ -144,20 +156,90 @@ func (ks KeySet) Contains(key Key) bool {
 	return false
 }
 
+// Whether or not the Key may have equivalent values that need to be checked.  For example, Key("submitter=") or
+// Key("publication=").
+func (kv KvPair) RequiresExpansion() bool {
+	return kv.Key.RequiresExpansion()
+}
+
+// Answers a slice of equivalent KvPairs from the store; the result may be empty
+func (kv KvPair) Expand(store *persistence.Store) ([]KvPair, error) {
+	return expandKvp(kv, store)
+}
+
+func (kv KvPair) Equals(other KvPair) bool {
+	return string(kv.Key) == string(other.Key) &&
+		kv.Value == other.Value
+}
+
+func expandKvp(kv KvPair, store *persistence.Store) ([]KvPair, error) {
+	var expanded []KvPair
+	if res, err := (*store).ExpandValue(kv.Value); err != nil {
+		return []KvPair{}, err
+	} else {
+		for i := range res {
+			expanded = append(expanded, KvPair{kv.Key, res[i]})
+		}
+	}
+
+	return expanded, nil
+}
+
+// QueryPairs is a slice of KvPairs that may be evaluated, resulting in a valid Elastic Search query
+type QueryPairs []KvPair
+
+// Replace the given KvPair with its replacement.  If the KvPair to replace doesn't exist in the QueryPairs, this
+// method is a noop
+func (qp QueryPairs) Replace(replace KvPair, replacement KvPair) {
+	for i := range qp {
+		if qp[i].Equals(replace) {
+			qp[i] = replacement
+		}
+	}
+}
+
+func (qp QueryPairs) Clone() QueryPairs {
+	var clone []KvPair
+
+	for i := range qp {
+		clone = append(clone, KvPair{qp[i].Key, qp[i].Value})
+	}
+
+	return clone
+}
+
+// ExpandedPairs is a slice of QueryPairs.  An ExpandedPairs represents the results of expansion on a []KvPair.
+type ExpandedPairs struct {
+	qps []QueryPairs
+}
+
+// Expand the ExpandedPairs by copying each QueryPairs and replacing every instance of 'replace' with 'replacement'
+func (ep ExpandedPairs) Expand(replace, replacement KvPair) ExpandedPairs {
+	for i := range ep.qps {
+		clonedQp := ep.qps[i].Clone()
+		clonedQp.Replace(replace, replacement)
+		ep.qps = append(ep.qps, clonedQp)
+	}
+
+	return ExpandedPairs{ep.qps}
+}
+
 // Encapsulates an ES query and the Keys it requires for evaluation
 type Template struct {
 	Template template.Template
 	Keys     []string
+	store    *persistence.Store
 }
 
 type tmplBuilderImpl struct {
 	built bool
 	keys  []string
 	query string
+	store *persistence.Store
 }
 
-func newTmplBuilder() tmplBuilderImpl {
-	return tmplBuilderImpl{}
+func newTmplBuilder(store *persistence.Store) tmplBuilderImpl {
+	return tmplBuilderImpl{store: store}
 }
 
 func (tb *tmplBuilderImpl) Children() []Plan {
@@ -235,6 +317,7 @@ func (tb *tmplBuilderImpl) asTemplate() (Template, error) {
 		return Template{
 			Template: *tmpl,
 			Keys:     tb.keys,
+			store:    tb.store,
 		}, nil
 	}
 }
@@ -449,12 +532,16 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 		return false, err
 	}
 
+	// TODO move the http.Client{} used by performQuery to the template struct like store.
+	client := http.Client{}
+
+
 	if query, err := qt.eval(keys); err != nil {
 		return false, err
 	} else {
 		// invoke query, obtain result.
 		if match, err := performQuery(query, ElasticSearchClient{
-			http.Client{},
+			client,
 		}, keys); err != nil {
 			return true, err
 		} else {
@@ -474,6 +561,28 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 
 	return false, nil
 }
+
+
+func expand(queryPair QueryPairs, store *persistence.Store) (ExpandedPairs, error) {
+
+	result := ExpandedPairs{qps: []QueryPairs{queryPair}}
+
+	for _, kvp := range queryPair {
+		if !kvp.RequiresExpansion() {
+			continue
+		}
+		if expandedPairs, err := kvp.Expand(store); err != nil {
+			return ExpandedPairs{}, err
+		} else {
+			for _, expandedPair := range expandedPairs {
+				result = result.Expand(kvp, expandedPair)
+			}
+		}
+	}
+
+	return result, nil
+}
+
 
 func (qt Template) Children() []Plan {
 	// templates do not have children

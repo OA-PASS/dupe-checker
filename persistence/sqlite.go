@@ -50,6 +50,8 @@ const (
 	updateDupeWithInverse = "UPDATE main.dupes SET inverse = true, targetCreatedBy = ?, targetCreated = ?, targetLastModified = ?, targetLastModifiedBy = ? WHERE source = ? AND target = ?"
 	selectDupeForInverse  = "SELECT 1 from main.dupes where source = ? AND target = ?"
 	selectCountFromDupes  = "SELECT count(*) from main.dupes"
+	selectTargetFromSource = "SELECT target from main.dupes where source = ?"
+	selectSourceFromTarget = "SELECT source from main.dupes where target = ?"
 	// TODO? selectChildren        = "SELECT container FROM main.containers WHERE parent=?"
 )
 
@@ -316,6 +318,43 @@ func (store sqlLiteEventStore) StoreDupe(source, target, passType string, obvers
 	}
 
 	return commitTx(source, target, tx)
+}
+
+func (store sqlLiteEventStore) ExpandValue(value string) ([]string, error) {
+	var r *sql.Rows
+	var err error
+	var result []string
+
+	if r, err = store.db.Query(selectSourceFromTarget, value); err != nil {
+		return result, NewErrQuery(selectSourceFromTarget, err, "persistence", "ExpandValue", value)
+	}
+
+	defer r.Close()
+
+	v := ""
+	for r.Next() {
+		if err = r.Scan(&v); err != nil {
+			return result, NewErrRowScan(selectSourceFromTarget, err, "persistence", "ExpandValue", value)
+		} else {
+			result = append(result, v)
+		}
+	}
+
+	r.Close()
+
+	if r, err = store.db.Query(selectTargetFromSource, value); err != nil {
+		return result, NewErrQuery(selectTargetFromSource, err, "persistence", "ExpandValue", value)
+	}
+
+	for r.Next() {
+		if err = r.Scan(&v); err != nil {
+			return result, NewErrRowScan(selectTargetFromSource, err, "persistence", "ExpandValue", value)
+		} else {
+			result = append(result, v)
+		}
+	}
+
+	return result, nil
 }
 
 func commitTx(source string, target string, tx *sql.Tx) error {

@@ -34,6 +34,7 @@ const (
 	storeUri
 	retrieve
 	storeDupe
+	expandValue
 )
 
 type call int
@@ -98,6 +99,14 @@ func (p *probe) StoreDupe(sourceUri, targetUri, passType string, matchedOn, matc
 	}
 
 	return nil
+}
+
+func (p *probe) ExpandValue(value string) ([]string, error) {
+	p.invoked = expandValue
+
+	p.withArgs = []string{value}
+
+	return p.retVal[0].([]string), p.retVal[1].(error)
 }
 
 func TestRetryStore_InvokesUnderlyingRetrieve(t *testing.T) {

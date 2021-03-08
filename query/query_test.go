@@ -18,6 +18,7 @@ package query
 
 import (
 	"bytes"
+	"dupe-checker/env"
 	"dupe-checker/model"
 	_ "embed"
 	"encoding/json"
@@ -65,11 +66,20 @@ func Test_PlanBuilderImplChildrenReturnsTemplates(t *testing.T) {
 }
 
 func Test_Strip(t *testing.T) {
-	s := "http://google.com/foo"
+	toStrip := "http://google.com/foo"
+	var result, strippedPrefix string
 
-	assert.Equal(t, "/foo", strip(s, "http://google.com"))
-	assert.Equal(t, "/foo", strip(s, "http://www.ford.com", "http://google.com"))
-	assert.Equal(t, "/foo", strip(s, "http://google.com", "http://google.com"))
+	result, strippedPrefix = env.StripBaseUri(toStrip, "http://google.com")
+	assert.Equal(t, "/foo", result)
+	assert.Equal(t, "http://google.com", strippedPrefix)
+
+	result, strippedPrefix = env.StripBaseUri(toStrip, "http://www.ford.com", "http://google.com")
+	assert.Equal(t, "/foo", result)
+	assert.Equal(t, "http://google.com", strippedPrefix)
+
+	result, strippedPrefix = env.StripBaseUri(toStrip, "http://google.com", "http://google.com")
+	assert.Equal(t, "/foo", result)
+	assert.Equal(t, "http://google.com", strippedPrefix)
 
 	backPorchPrefix := "http://fcrepo:8080/fcrepo/rest"
 	frontPorchPrefix := "http://localhost:9090/fcrepo/rest"
@@ -77,10 +87,18 @@ func Test_Strip(t *testing.T) {
 	backPorch := "http://fcrepo:8080/fcrepo/rest/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054"
 	frontPorch := "http://localhost:9090/fcrepo/rest/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054"
 
-	assert.Equal(t, "/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054", strip(backPorch, backPorchPrefix))
-	assert.Equal(t, "/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054", strip(frontPorch, frontPorchPrefix))
+	result, strippedPrefix = env.StripBaseUri(backPorch, backPorchPrefix)
+	assert.Equal(t, "/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054", result)
+	assert.Equal(t, backPorchPrefix, strippedPrefix)
 
-	assert.Equal(t, strip(backPorch, backPorchPrefix, frontPorchPrefix), strip(frontPorch, backPorchPrefix, frontPorchPrefix))
+	result, strippedPrefix = env.StripBaseUri(frontPorch, frontPorchPrefix)
+	assert.Equal(t, "/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054", result)
+	assert.Equal(t, frontPorchPrefix, strippedPrefix)
+
+	result1, _ := env.StripBaseUri(backPorch, backPorchPrefix, frontPorchPrefix)
+	result2, _ := env.StripBaseUri(frontPorch, backPorchPrefix, frontPorchPrefix)
+
+	assert.Equal(t, result1, result2)
 }
 
 func Test_MatchUriPathsEqual(t *testing.T) {
@@ -112,20 +130,23 @@ func Test_MatchUriPathsEqual(t *testing.T) {
 
 func Test_MatchStripBaseUri(t *testing.T) {
 	path := "/publications/90/85/d5/9b/9085d59b-4fb5-46f7-88a6-2d3d4e06b054"
-	backPorch := "http://fcrepo:8080/fcrepo/rest" + path
-	frontPorch := "http://localhost:9090/fcrepo/rest" + path
+	backPorchBaseUri := "http://fcrepo:8080/fcrepo/rest"
+	backPorch := backPorchBaseUri + path
+	frontPorchBaseUri := "http://localhost:9090/fcrepo/rest"
+	frontPorch := frontPorchBaseUri + path
 
 	m := Match{
-		fedoraBaseUri: "http://localhost:9090/fcrepo/rest",
-		indexBaseUri:  "http://fcrepo:8080/fcrepo/rest",
+		fedoraBaseUri: frontPorchBaseUri,
+		indexBaseUri:  backPorchBaseUri,
 	}
 
 	assert.Equal(t, path, m.StripBaseUri(backPorch))
 	assert.Equal(t, path, m.StripBaseUri(frontPorch))
 
+	// as if there is no back porch base uri
 	m = Match{
-		fedoraBaseUri: "http://localhost:9090/fcrepo/rest",
-		indexBaseUri:  "http://localhost:9090/fcrepo/rest",
+		fedoraBaseUri: frontPorchBaseUri,
+		indexBaseUri:  frontPorchBaseUri,
 	}
 
 	assert.Equal(t, path, m.StripBaseUri(frontPorch))

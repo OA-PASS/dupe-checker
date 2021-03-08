@@ -92,3 +92,18 @@ func getEnv(varName, defaultValue string) string {
 		return value
 	}
 }
+
+// Strips the first matching base URI from the provided URI, and returns the resulting URI path (stripped of its base)
+// and the baseUri that was stripped.  If the provided URI is not subordinate to any of the provided base URIs, then it
+// will be returned untouched, and the returned baseUri will be the empty string.
+func StripBaseUri(uri string, baseUris ...string) (resultingPath string, baseUri string) {
+	resultingPath = uri
+	for _, p := range baseUris {
+		if strings.HasPrefix(uri, p) {
+			resultingPath = strings.TrimPrefix(uri, p)
+			baseUri = p
+			break
+		}
+	}
+	return resultingPath, baseUri
+}

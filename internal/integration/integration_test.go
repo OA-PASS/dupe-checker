@@ -276,7 +276,7 @@ func findDuplicatePublicationsAndUsers(t *testing.T) {
 		panic(err.Error())
 	}
 
-	plan := query.NewPlanDecoder().Decode(queryPlanPubsAndUsers)
+	plan := query.NewPlanDecoder(nil).Decode(queryPlanPubsAndUsers)
 	log.Printf("Query plan: %s", plan)
 
 	// store candidate duplicate uris and their type in the database
@@ -371,7 +371,7 @@ func findDuplicateAllTheRest(t *testing.T) {
 		panic(err.Error())
 	}
 
-	plan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)
+	plan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)
 	log.Printf("Query plan: %s", plan)
 
 	// store candidate duplicate uris and their type in the database
@@ -469,7 +469,7 @@ func findDuplicateAllTheRest(t *testing.T) {
 
 func findDuplicateSubmission(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
+	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -485,15 +485,7 @@ func findDuplicateSubmission(t *testing.T) {
 
 func findDuplicateUser(t *testing.T) {
 	t.Parallel()
-
-	//_ = &sqlite3.SQLiteDriver{}
-	//
-	//store, _ := persistence.NewSqlLiteStore("file:/tmp/pubsanduserstest.db?mode=rwc&cache=shared", persistence.SqliteParams{
-	//	MaxIdleConn: 4,
-	//	MaxOpenConn: 4,
-	//}, nil)
-
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanPubsAndUsers)[model.PassTypeUser]
+	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanPubsAndUsers)[model.PassTypeUser]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -509,7 +501,7 @@ func findDuplicateUser(t *testing.T) {
 
 func findDuplicateRepoCopy(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeRepositoryCopy]
+	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeRepositoryCopy]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -525,7 +517,7 @@ func findDuplicateRepoCopy(t *testing.T) {
 
 func findDuplicateGrant(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeGrant]
+	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeGrant]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -541,7 +533,7 @@ func findDuplicateGrant(t *testing.T) {
 
 func findDuplicateFunder(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeFunder]
+	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeFunder]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -557,7 +549,7 @@ func findDuplicateFunder(t *testing.T) {
 
 func findDuplicatePublication(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder().Decode(queryPlanPubsAndUsers)[model.PassTypePublication]
+	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanPubsAndUsers)[model.PassTypePublication]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -573,7 +565,7 @@ func findDuplicatePublication(t *testing.T) {
 
 func findDuplicateJournalSimple(t *testing.T) {
 	t.Parallel()
-	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlanSimpleJournal)[model.PassTypeJournal]
+	journalQueryPlan := query.NewPlanDecoder(nil).Decode(queryPlanSimpleJournal)[model.PassTypeJournal]
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
 	times := 0
@@ -588,7 +580,7 @@ func findDuplicateJournalSimple(t *testing.T) {
 
 func findDuplicateJournal(t *testing.T) {
 	t.Parallel()
-	journalQueryPlan := query.NewPlanDecoder().Decode(queryPlanAllTheRest)[model.PassTypeJournal]
+	journalQueryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeJournal]
 	handlerExecuted := false
 	times := 0
 	potentialDuplicates := map[string]int{}

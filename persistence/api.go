@@ -198,4 +198,5 @@ type Store interface {
 	StoreUri(containerUri string, s State) error
 	Retrieve(uri string) (State, error)
 	StoreDupe(source, target, passType string, matchedOn, matchedValues []string, attribs DupeContainerAttributes) error
+	ExpandValue(value string) ([]string, error)
 }

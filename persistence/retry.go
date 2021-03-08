@@ -66,6 +66,16 @@ func (rs retryStore) StoreDupe(sourceUri, targetUri, passType string, matchedOn,
 	})
 }
 
+func (rs retryStore) ExpandValue(value string) ([]string, error) {
+	var expanded []string
+	var err error
+	rs.retry(rs.maxTries, rs.retryInterval, func() error {
+		expanded, err = rs.underlyingStore.ExpandValue(value)
+		return err
+	})
+	return expanded, err
+}
+
 func (rs retryStore) retry(triesLeft int, retryInterval time.Duration, callback retryCallback) error {
 	// invoke the callback and capture the error
 	var err error

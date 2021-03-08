@@ -273,7 +273,7 @@ func newStore(dsn string) (persistence.Store, error) {
 // Answers the query plan, one Plan per PASS type.
 // Keys are full RDF URIs representing PASS types, e.g. http://oapass.org/ns/pass#Submission.
 func decodeQueryPlan(planJson string) map[string]query.Plan {
-	return query.NewPlanDecoder().Decode(planJson)
+	return query.NewPlanDecoder(nil).Decode(planJson)
 }
 
 // Answers a Retriever implementation, used to get resources from the PASS repository

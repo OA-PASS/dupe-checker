@@ -17,6 +17,7 @@
 package query
 
 import (
+	"dupe-checker/env"
 	"dupe-checker/model"
 	"fmt"
 	"net/http"
@@ -196,15 +197,7 @@ func (m *Match) StripBaseUri(uri string) string {
 	if strings.TrimSpace(m.fedoraBaseUri) == "" || strings.TrimSpace(m.indexBaseUri) == "" {
 		panic("cannot compare URI paths, as the base uri to strip are not set")
 	}
-	return strip(uri, m.fedoraBaseUri, m.indexBaseUri)
+	result, _ := env.StripBaseUri(uri, m.fedoraBaseUri, m.indexBaseUri)
+	return result
 }
 
-// trims the prefixes from the supplied string
-func strip(string string, prefix ...string) string {
-	for _, p := range prefix {
-		if strings.HasPrefix(string, p) {
-			string = strings.TrimPrefix(string, p)
-		}
-	}
-	return string
-}

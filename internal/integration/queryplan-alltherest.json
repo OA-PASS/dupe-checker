@@ -20,7 +20,7 @@
       {
         "query": {
           "keys": [
-            "publication",
+            "publication=",
             "repository"
           ],
           "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
@@ -41,8 +41,8 @@
       {
         "query": {
           "keys": [
-            "publication",
-            "submitter"
+            "publication=",
+            "submitter="
           ],
           "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }
@@ -50,8 +50,8 @@
       {
         "query": {
           "keys": [
-            "publication",
-            "preparers*"
+            "publication=",
+            "preparers*="
           ],
           "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{if ismulti $e.Key}}\"{{$e.Value}}\"{{else}}\"{{$e.Value}}\"{{end}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }

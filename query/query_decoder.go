@@ -17,6 +17,7 @@
 package query
 
 import (
+	"dupe-checker/persistence"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -51,13 +52,15 @@ type PlanDecoder interface {
 	Decode(config string) map[string]Plan
 }
 
-type decoder struct{}
-
-func NewPlanDecoder() PlanDecoder {
-	return decoder{}
+type decoder struct{
+	store *persistence.Store
 }
 
-func (decoder) Decode(config string) map[string]Plan {
+func NewPlanDecoder(store *persistence.Store) PlanDecoder {
+	return decoder{store}
+}
+
+func (d decoder) Decode(config string) map[string]Plan {
 	plans := make(map[string]Plan)
 	dec := json.NewDecoder(strings.NewReader(config))
 	stack := tokenStack{}
@@ -222,7 +225,7 @@ func (decoder) Decode(config string) map[string]Plan {
 				} else {
 					// have a top level key representing a PASS type
 					passType = jsonToken.(string)
-					passTypeBuilder = newPlanBuilder()
+					passTypeBuilder = newPlanBuilder(d.store)
 					log.Printf("Have a PASS type: %v", passType)
 					if p, exists := plans[passType]; exists {
 						panic(fmt.Sprintf("illegal state: %T@%s already exists for type '%s'", p, p, passType))

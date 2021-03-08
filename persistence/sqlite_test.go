@@ -292,6 +292,77 @@ func Test_StoreDupeInverse(t *testing.T) {
 	}
 }
 
+func Test_ExpandValueWithTarget(t *testing.T) {
+	dsn := ":memory:"
+	var store Store
+	var err error
+	var result []string
+
+	if store, err = NewSqlLiteStore(dsn, SqliteParams{"", "", 2, 10}, nil); err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	source := "source"
+	dupes := []string{ "dupeA", "dupeB", "dupeC"}
+
+	for i := range dupes {
+		store.StoreDupe(source, dupes[i], "type", []string{"matchedOn"}, DupeContainerAttributes{})
+	}
+
+	result, err = store.ExpandValue(source)
+	assert.Nil(t, err)
+	assert.EqualValues(t, dupes, result)
+}
+
+func Test_ExpandValueWithSource(t *testing.T) {
+	dsn := ":memory:"
+	var store Store
+	var err error
+	var result []string
+
+	if store, err = NewSqlLiteStore(dsn, SqliteParams{"", "", 2, 10}, nil); err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	target := "source"
+	dupes := []string{ "dupeA", "dupeB", "dupeC"}
+
+	for i := range dupes {
+		store.StoreDupe(dupes[i], target, "type", []string{"matchedOn"}, DupeContainerAttributes{})
+	}
+
+	result, err = store.ExpandValue(target)
+	assert.Nil(t, err)
+	assert.EqualValues(t, dupes, result)
+}
+
+func Test_ExpandValueBidirectional(t *testing.T) {
+	dsn := ":memory:"
+	var store Store
+	var err error
+	var result []string
+
+	if store, err = NewSqlLiteStore(dsn, SqliteParams{"", "", 2, 10}, nil); err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	value := "target"
+
+	sourceDupes := []string{"sourceA", "sourceB", "sourceC"}
+	for i := range sourceDupes {
+		store.StoreDupe(sourceDupes[i], value, "type", []string{"matchedOn"}, DupeContainerAttributes{})
+	}
+
+	targetDupes := []string{"targetA", "targetB", "targetC"}
+	for i := range targetDupes {
+		store.StoreDupe(value, targetDupes[i], "type", []string{"matchedOn"}, DupeContainerAttributes{})
+	}
+
+	result, err = store.ExpandValue(value)
+	assert.Nil(t, err)
+	assert.EqualValues(t, append(sourceDupes, targetDupes...), result)
+}
+
 func Test_ConnhookTest(t *testing.T) {
 	sqlite3conn := []*sqlite3.SQLiteConn{}
 	sql.Register("sqlite3_with_hook_example",
