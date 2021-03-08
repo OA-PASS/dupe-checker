@@ -30,6 +30,7 @@ const (
 	HTTP_TIMEOUT_MS                = "HTTP_TIMEOUT_MS"
 	SQLITE_DSN                     = "SQLITE_DSN"
 	INDEX_SEARCH_BASE_URI          = "INDEX_SEARCH_BASE_URI"
+	INDEX_SEARCH_MAX_RESULT_SIZE   = "INDEX_SEARCH_MAX_RESULT_SIZE"
 	IT_SKIP_SERVICE_DEP_CHECK      = "IT_SKIP_SERVICE_DEP_CHECK"
 )
 
@@ -49,6 +50,8 @@ type Env struct {
 	FcrepoMaxConcurrentRequests,
 	// base http uri of the index search endpoint
 	IndexSearchBaseUri,
+	// maximum number of hits to allow from Elastic Search on a per-request basis
+	IndexSearchMaxResultSize,
 	HttpTimeoutMs,
 	SqliteDsn string
 }
@@ -65,10 +68,11 @@ func New() Env {
 
 		// Skips the service dependency check when starting ITs, useful for speeding up iteration when
 		// services are known to be up
-		ItSkipServiceDepCheck: getEnv(IT_SKIP_SERVICE_DEP_CHECK, "false"),
-		HttpTimeoutMs:         getEnv(HTTP_TIMEOUT_MS, "600000"), // 10 minutes
-		SqliteDsn:             getEnv(SQLITE_DSN, "file:/tmp/dupechecker.db"),
-		IndexSearchBaseUri:    getEnv(INDEX_SEARCH_BASE_URI, "http://elasticsearch:9200/pass/_search"),
+		ItSkipServiceDepCheck:    getEnv(IT_SKIP_SERVICE_DEP_CHECK, "false"),
+		HttpTimeoutMs:            getEnv(HTTP_TIMEOUT_MS, "600000"), // 10 minutes
+		SqliteDsn:                getEnv(SQLITE_DSN, "file:/tmp/dupechecker.db"),
+		IndexSearchBaseUri:       getEnv(INDEX_SEARCH_BASE_URI, "http://elasticsearch:9200/pass/_search"),
+		IndexSearchMaxResultSize: getEnv(INDEX_SEARCH_MAX_RESULT_SIZE, "1000"),
 	}
 }
 

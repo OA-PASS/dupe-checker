@@ -226,7 +226,7 @@ func (qt Template) eval(kvp []KvPair) (string, error) {
 	buf := &bytes.Buffer{}
 	//FIXME
 	e := env.New()
-	var scheme, hostandport, index string
+	var scheme, hostandport, index, size string
 
 	if u, err := url.Parse(e.IndexSearchBaseUri); err != nil {
 		panic(fmt.Sprintf("Cannot parse %s as a URL: %s", e.IndexSearchBaseUri, err.Error()))
@@ -235,14 +235,16 @@ func (qt Template) eval(kvp []KvPair) (string, error) {
 		hostandport = u.Host
 		temp := e.IndexSearchBaseUri[0:strings.LastIndex(e.IndexSearchBaseUri, "/_search")]
 		index = temp[strings.LastIndex(temp, "/")+1:]
+		size = e.IndexSearchMaxResultSize
 	}
 
 	if err := qt.Template.Execute(buf, struct {
 		Scheme      string
 		HostAndPort string
 		Index       string
+		Size        string
 		KvPairs     []KvPair
-	}{scheme, hostandport, index, kvp}); err != nil {
+	}{scheme, hostandport, index, size, kvp}); err != nil {
 		return "", err
 	} else {
 		return buf.String(), nil

@@ -8,7 +8,7 @@
               "keys": [
                 "doi"
               ],
-              "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+              "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
             }
           },
           {
@@ -16,7 +16,7 @@
               "keys": [
                 "pmid"
               ],
-              "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+              "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
             }
           }
         ]
@@ -26,7 +26,7 @@
           "keys": [
             "title"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }
       }
     ]
@@ -36,7 +36,7 @@
       "keys": [
         "locatorIds*"
       ],
-      "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key.IndexField}}:{{if ismulti $e.Key}}*{{$e.Value | urlqueryesc}}*{{else}}\"{{$e.Value | urlqueryesc}}\"{{end}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+      "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key.IndexField}}:{{if ismulti $e.Key}}*{{$e.Value | urlqueryesc}}*{{else}}\"{{$e.Value | urlqueryesc}}\"{{end}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
     }
   }
 }

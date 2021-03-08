@@ -4,7 +4,7 @@
       "keys": [
         "localKey"
       ],
-      "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{$e.Value | urlqueryesc }}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+      "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{$e.Value | urlqueryesc }}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
     }
   },
   "http://oapass.org/ns/pass#Grant": {
@@ -12,7 +12,7 @@
       "keys": [
         "localKey"
       ],
-      "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{$e.Value | urlqueryesc }}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+      "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{$e.Value | urlqueryesc }}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
     }
   },
   "http://oapass.org/ns/pass#RepositoryCopy": {
@@ -23,7 +23,7 @@
             "publication",
             "repository"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }
       },
       {
@@ -31,7 +31,7 @@
           "keys": [
             "accessUrl"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }
       }
     ]
@@ -44,7 +44,7 @@
             "publication",
             "submitter"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value}}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }
       },
       {
@@ -53,7 +53,7 @@
             "publication",
             "preparers*"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{if ismulti $e.Key}}\"{{$e.Value}}\"{{else}}\"{{$e.Value}}\"{{end}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:{{if ismulti $e.Key}}\"{{$e.Value}}\"{{else}}\"{{$e.Value}}\"{{end}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }
       }
     ]
@@ -65,7 +65,7 @@
           "keys": [
             "nlmta"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key}}:\"{{$e.Value | urlqueryesc }}\"{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }
       },
       {
@@ -74,7 +74,7 @@
             "journalName",
             "issn*"
           ],
-          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key.IndexField}}:{{if ismulti $e.Key}}*{{$e.Value | urlqueryesc}}*{{else}}\"{{$e.Value | urlqueryesc}}\"{{end}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND"
+          "q": "{{.Scheme}}://{{.HostAndPort}}/{{.Index}}/_search?q={{$count := dec (len .KvPairs)}}{{range $i, $e := .KvPairs}}{{$e.Key.IndexField}}:{{if ismulti $e.Key}}*{{$e.Value | urlqueryesc}}*{{else}}\"{{$e.Value | urlqueryesc}}\"{{end}}{{if lt $i $count}}+{{end}}{{end}}&default_operator=AND&size={{.Size}}"
         }
       }
     ]
