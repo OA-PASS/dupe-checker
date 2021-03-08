@@ -114,6 +114,30 @@ func (kv KvPair) IsMulti() bool {
 	return kv.Key.IsMulti()
 }
 
+type KeyList []KvPair
+
+// Returns a slice of unique Keys in the list
+func (kl KeyList) KeySet() KeySet {
+	resultMap := make(map[Key]int)
+	var resultSlice []Key
+
+	for _, kvp := range kl {
+		if _, exists := resultMap[kvp.Key]; exists {
+			resultMap[kvp.Key]++
+		} else {
+			resultMap[kvp.Key] = 1
+		}
+	}
+
+	for k, _ := range resultMap {
+		resultSlice = append(resultSlice, k)
+	}
+
+	return resultSlice
+}
+
+type KeySet []Key
+
 // Encapsulates an ES query and the Keys it requires for evaluation
 type Template struct {
 	Template template.Template
@@ -370,15 +394,9 @@ func performQuery(query string, esClient ElasticSearchClient, keys []KvPair) (Ma
 	}
 
 	// Get the *unique* list of keys
-	matchFieldsMap := make(map[string]int)
-	for _, kvp := range keys {
-		if _, exists := matchFieldsMap[kvp.Key.String()]; !exists {
-			matchFieldsMap[kvp.Key.String()] = 1
-		}
-	}
 	var matchFields []string
-	for k, _ := range matchFieldsMap {
-		matchFields = append(matchFields, k)
+	for _, k := range KeyList(keys).KeySet() {
+		matchFields = append(matchFields, k.String())
 	}
 
 	m := Match{
@@ -400,12 +418,18 @@ func performQuery(query string, esClient ElasticSearchClient, keys []KvPair) (Ma
 		matchedUri := hit.Source["@id"].(string)
 		m.MatchingUris = append(m.MatchingUris, matchedUri)
 		var matchValues []string
-		for _, kvp := range keys {
-			switch hit.Source[kvp.Key.IndexField()].(type) {
+		for _, key := range KeyList(keys).KeySet() {
+			switch value := hit.Source[key.IndexField()].(type) {
 			case string:
-				matchValues = append(matchValues, hit.Source[kvp.Key.IndexField()].(string))
+				matchValues = append(matchValues, value)
 			case []string:
-				matchValues = append(matchValues, strings.Join(hit.Source[kvp.Key.IndexField()].([]string), ","))
+				matchValues = append(matchValues, strings.Join(value, ","))
+			case []interface{}:
+				var s []string
+				for _, v := range value {
+					s = append(s, v.(string))
+				}
+				matchValues = append(matchValues, strings.Join(s, ";"))
 			}
 		}
 		m.MatchValues[matchedUri] = matchValues

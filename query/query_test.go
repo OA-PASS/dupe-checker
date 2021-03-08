@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"dupe-checker/model"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/knakk/rdf"
@@ -55,6 +56,9 @@ var passJournal string
 
 //go:embed pass-publication.n3
 var passPublication string
+
+//go:embed example-hit-01.json
+var queryHit []byte
 
 func Test_PlanBuilderImplChildrenReturnsTemplates(t *testing.T) {
 
@@ -593,6 +597,29 @@ func TestPlanAndTemplate_ExecuteSimple(t *testing.T) {
 	assert.True(t, resultProcessTriggered)
 	assert.True(t, resultProcessSuccessfully)
 
+}
+
+func Test_DecodeHit(t *testing.T) {
+	hit := make(map[string]interface{})
+	json.Unmarshal(queryHit, &hit)
+
+	assert.Equal(t, "https://pass.jhu.edu/fcrepo/rest/users/75/3a/e2/19/753ae219-63c2-4aef-a930-9e419734a279", hit["@id"].(string))
+
+	locatorIds := toArrayString(hit["locatorIds"].([]interface{}))
+	assert.Equal(t, []string{"johnshopkins.edu:employeeid:00016197", "johnshopkins.edu:hopkinsid:79DUP9", "johnshopkins.edu:jhed:edaughe2"}, locatorIds)
+
+	/*
+		{...1   [] [locatorIds locatorIds locatorIds] map[] {  0001-01-01 00:00:00 +0000 UTC 0001-01-01 00:00:00 +0000 UTC}}
+	*/
+}
+
+func toArrayString(arrayint []interface{}) (result []string) {
+
+	for _, v := range arrayint {
+		result = append(result, v.(string))
+	}
+
+	return
 }
 
 /*
