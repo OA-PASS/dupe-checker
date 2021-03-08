@@ -160,6 +160,15 @@ type Match struct {
 	}
 }
 
+// MatchHandler accepts the result from an Elastic Search query, i.e. a 'Match' (represented as an interface{} in
+// the method signature) and does something with it.  A typical implementation will determine if the query found
+// duplicate resources (HitCount > 1, and PassUri != any of the MatchingUris), and store those duplicates in the
+// database.
+//
+// A MatchHandler can return 'true' if it believes no more queries need to be executed, otherwise it should return
+// false.  Any errors that cannot be handled gracefully should be returned.
+type MatchHandler func(result interface{}) (shortCircuit bool, err error)
+
 // Strips the back and front porch Fedora base URIs from the supplied URIs, and compares the remaining URI paths for
 // equality.  The front and back porch base URIs are kept as internal state, initialized when the Match is created.
 // Typically the front and back porch base URIs come from the environment.

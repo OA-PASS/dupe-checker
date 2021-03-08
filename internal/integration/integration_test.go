@@ -197,6 +197,42 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// Returns a MatchHandler that records it had been executed (i.e. the query processor invoked the handler), the number
+// of times it was executed, and records all of the URIs found in the match and the number of times they are seen.  If
+// the optional Store is provided, then the duplicates will be recorded in the persistence store.
+func matchHandler(executed *bool, timeInvoked *int, duplicateUris *map[string]int, store *persistence.Store) query.MatchHandler {
+	return func(result interface{}) (bool, error) {
+		match := result.(query.Match)
+		*executed = true
+		*timeInvoked++
+		for _, matchingUri := range match.MatchingUris {
+			if matchingUri == match.PassUri {
+				continue
+			}
+			if _, contains := (*duplicateUris)[matchingUri]; contains {
+				(*duplicateUris)[matchingUri]++
+			} else {
+				(*duplicateUris)[matchingUri] = 1
+			}
+		}
+
+		if store != nil {
+			for candidateDupe, _ := range *duplicateUris {
+				if err := (*store).StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, match.MatchValues[candidateDupe], persistence.DupeContainerAttributes{
+					SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
+					SourceCreated:        match.ContainerProperties.SourceCreated,
+					SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
+					SourceLastModified:   match.ContainerProperties.SourceLastModified,
+				}); err != nil {
+					return false, err
+				}
+			}
+		}
+
+		return false, nil
+	}
+}
+
 func Test_DuplicateQuerySuite(t *testing.T) {
 	t.Run("Duplicates Test Suite", func(t *testing.T) {
 		t.Run("duplicateFunder", findDuplicateFunder)
@@ -233,33 +269,10 @@ func findDuplicatePublicationsAndUsers(t *testing.T) {
 	log.Printf("Query plan: %s", plan)
 
 	// store candidate duplicate uris and their type in the database
-	matchHandler := func(result interface{}) (bool, error) {
-		candidateDupes := map[string]int{}
-		match := result.(query.Match)
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := candidateDupes[matchingUri]; contains {
-				candidateDupes[matchingUri]++
-			} else {
-				candidateDupes[matchingUri] = 1
-			}
-		}
-
-		for candidateDupe, _ := range candidateDupes {
-			if err := store.StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, match.MatchValues[candidateDupe], persistence.DupeContainerAttributes{
-				SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
-				SourceCreated:        match.ContainerProperties.SourceCreated,
-				SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
-				SourceLastModified:   match.ContainerProperties.SourceLastModified,
-			}); err != nil && !errors.Is(err, sqlite3.ErrConstraint) {
-				assert.Failf(t, "%s", err.Error())
-			}
-		}
-
-		return false, nil
-	}
+	handlerExecuted := false
+	potentialDuplicates := map[string]int{}
+	times := 0
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, &store)
 
 	// descend into all containers that are not pass resources or acls
 	filterFn := func(c model.LdpContainer) bool {
@@ -351,33 +364,10 @@ func findDuplicateAllTheRest(t *testing.T) {
 	log.Printf("Query plan: %s", plan)
 
 	// store candidate duplicate uris and their type in the database
-	matchHandler := func(result interface{}) (bool, error) {
-		candidateDupes := map[string]int{}
-		match := result.(query.Match)
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := candidateDupes[matchingUri]; contains {
-				candidateDupes[matchingUri]++
-			} else {
-				candidateDupes[matchingUri] = 1
-			}
-		}
-
-		for candidateDupe, _ := range candidateDupes {
-			if err := store.StoreDupe(match.PassUri, candidateDupe, match.PassType, match.MatchFields, match.MatchValues[candidateDupe], persistence.DupeContainerAttributes{
-				SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
-				SourceCreated:        match.ContainerProperties.SourceCreated,
-				SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
-				SourceLastModified:   match.ContainerProperties.SourceLastModified,
-			}); err != nil && !errors.Is(err, sqlite3.ErrConstraint) {
-				assert.Failf(t, "%s", err.Error())
-			}
-		}
-
-		return false, nil
-	}
+	handlerExecuted := false
+	potentialDuplicates := map[string]int{}
+	times := 0
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, &store)
 
 	// descend into all containers that are not pass resources or acls
 	filterFn := func(c model.LdpContainer) bool {
@@ -474,27 +464,11 @@ func findDuplicateSubmission(t *testing.T) {
 	potentialDuplicates := map[string]int{}
 	times := 0
 
-	matchHandler := func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		handlerExecuted = true
-		times++
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := potentialDuplicates[matchingUri]; contains {
-				potentialDuplicates[matchingUri]++
-			} else {
-				potentialDuplicates[matchingUri] = 1
-			}
-		}
-		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
-		// duplicate)
-	}
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, nil)
+
 	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "submissions"), "http://oapass.org/ns/pass#Submission", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 3, times)
+	assert.Equal(t, 4, times)
 	assert.Equal(t, 3, len(potentialDuplicates)) // for the two duplicate User resources
 }
 
@@ -506,24 +480,8 @@ func findDuplicateUser(t *testing.T) {
 	potentialDuplicates := map[string]int{}
 	times := 0
 
-	matchHandler := func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		handlerExecuted = true
-		times++
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := potentialDuplicates[matchingUri]; contains {
-				potentialDuplicates[matchingUri]++
-			} else {
-				potentialDuplicates[matchingUri] = 1
-			}
-		}
-		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
-		// duplicate)
-	}
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, nil)
+
 	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "users"), "http://oapass.org/ns/pass#User", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, times)
@@ -538,27 +496,11 @@ func findDuplicateRepoCopy(t *testing.T) {
 	potentialDuplicates := map[string]int{}
 	times := 0
 
-	matchHandler := func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		handlerExecuted = true
-		times++
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := potentialDuplicates[matchingUri]; contains {
-				potentialDuplicates[matchingUri]++
-			} else {
-				potentialDuplicates[matchingUri] = 1
-			}
-		}
-		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
-		// duplicate)
-	}
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, nil)
+
 	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "repositoryCopies"), "http://oapass.org/ns/pass#RepositoryCopy", matchHandler, nil)
-	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 3, times)
+	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 4, times)                    // one query for each resource plus an additional query for the resource with both the url and the publication
 	assert.Equal(t, 3, len(potentialDuplicates)) // for the three duplicate RepoCopy resources
 }
 
@@ -570,24 +512,8 @@ func findDuplicateGrant(t *testing.T) {
 	potentialDuplicates := map[string]int{}
 	times := 0
 
-	matchHandler := func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		handlerExecuted = true
-		times++
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := potentialDuplicates[matchingUri]; contains {
-				potentialDuplicates[matchingUri]++
-			} else {
-				potentialDuplicates[matchingUri] = 1
-			}
-		}
-		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
-		// duplicate)
-	}
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, nil)
+
 	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "grants"), "http://oapass.org/ns/pass#Grant", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, times)
@@ -602,24 +528,8 @@ func findDuplicateFunder(t *testing.T) {
 	potentialDuplicates := map[string]int{}
 	times := 0
 
-	matchHandler := func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		handlerExecuted = true
-		times++
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := potentialDuplicates[matchingUri]; contains {
-				potentialDuplicates[matchingUri]++
-			} else {
-				potentialDuplicates[matchingUri] = 1
-			}
-		}
-		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
-		// duplicate)
-	}
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, nil)
+
 	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "funders"), "http://oapass.org/ns/pass#Funder", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, times)
@@ -634,27 +544,11 @@ func findDuplicatePublication(t *testing.T) {
 	potentialDuplicates := map[string]int{}
 	times := 0
 
-	matchHandler := func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		handlerExecuted = true
-		times++
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := potentialDuplicates[matchingUri]; contains {
-				potentialDuplicates[matchingUri]++
-			} else {
-				potentialDuplicates[matchingUri] = 1
-			}
-		}
-		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
-		// duplicate)
-	}
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, nil)
+
 	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "publications"), "http://oapass.org/ns/pass#Publication", matchHandler, nil)
 	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 5, times)                    // TODO unexplained
+	assert.Equal(t, 6, times)                    // 1 query each for four resources, plus a two additional queries for the resource with all three properties
 	assert.Equal(t, 4, len(potentialDuplicates)) // for the four duplicate Publication resources
 }
 
@@ -665,24 +559,8 @@ func findDuplicateJournalSimple(t *testing.T) {
 	potentialDuplicates := map[string]int{}
 	times := 0
 
-	matchHandler := func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		handlerExecuted = true
-		times++
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := potentialDuplicates[matchingUri]; contains {
-				potentialDuplicates[matchingUri]++
-			} else {
-				potentialDuplicates[matchingUri] = 1
-			}
-		}
-		return true, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-		// - we could short-circuit the plan, because we found two hits for the container (i.e., there's a
-		// duplicate)
-	}
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, nil)
+
 	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler, nil)
 	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
 	assert.Equal(t, 2, times)       // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
@@ -700,24 +578,8 @@ func findDuplicateJournal(t *testing.T) {
 	//  - we always expect at least one result, because the query that looks for duplicates will find at least the
 	//    original resource
 	//  - any matches beyond that are considered potential duplicates
-	matchHandler := func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		handlerExecuted = true
-		times++
-		for _, matchingUri := range match.MatchingUris {
-			if matchingUri == match.PassUri {
-				continue
-			}
-			if _, contains := potentialDuplicates[matchingUri]; contains {
-				potentialDuplicates[matchingUri]++
-			} else {
-				potentialDuplicates[matchingUri] = 1
-			}
-		}
-		return len(match.MatchingUris) > 1, nil // we return true here because in an 'or' scenario - which we aren't in for this test
-		// - we could short-circuit the plan, because we found three hits for the container (i.e., there are two
-		// duplicates)
-	}
+	matchHandler := matchHandler(&handlerExecuted, &times, &potentialDuplicates, nil)
+
 	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler, nil)
 	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
 	assert.Equal(t, 3, len(potentialDuplicates)) // we expect three potential duplicates; the journal with the single ISSN won't be found because we exact match on ISSNs, this is a TODO/FIXME
@@ -730,8 +592,8 @@ func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passT
 	assert.Nil(t, err)
 
 	controller := visit.NewController(retriever, maxReq)
-	controller.ErrorHandler(visit.LogErrorHandler)
-	controller.EventHandler(visit.LogEventHandler)
+	controller.ErrorHandler(visit.NoopErrorHandler)
+	controller.EventHandler(visit.NoopEventHandler)
 	if containerHandler == nil {
 		controller.ContainerHandler(defaultContainerHandler(t, queryPlan, passType, matchHandler))
 	} else {
