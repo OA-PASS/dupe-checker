@@ -95,7 +95,8 @@ func (k Key) RequiresExpansion() bool {
 // this method will answer 'issn' for the Key("issn*"), or 'publication' for the Key("publication*=").
 func (k Key) String() string {
 	s := string(k)
-	if k.IsMulti() && !k.RequiresExpansion() {
+	if (k.IsMulti() && !k.RequiresExpansion()) ||
+		(!k.IsMulti() && k.RequiresExpansion()) {
 		return s[0 : len(s)-1]
 	} else if k.IsMulti() && k.RequiresExpansion() {
 		return s[0 : len(s)-2]
@@ -535,7 +536,6 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 	// TODO move the http.Client{} used by performQuery to the template struct like store.
 	client := http.Client{}
 
-
 	if query, err := qt.eval(keys); err != nil {
 		return false, err
 	} else {
@@ -562,7 +562,6 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 	return false, nil
 }
 
-
 func expand(queryPair QueryPairs, store *persistence.Store) (ExpandedPairs, error) {
 
 	result := ExpandedPairs{qps: []QueryPairs{queryPair}}
@@ -582,7 +581,6 @@ func expand(queryPair QueryPairs, store *persistence.Store) (ExpandedPairs, erro
 
 	return result, nil
 }
-
 
 func (qt Template) Children() []Plan {
 	// templates do not have children

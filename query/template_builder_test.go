@@ -118,8 +118,12 @@ func Test_KeyIndexField(t *testing.T) {
 
 func Test_KeyString(t *testing.T) {
 	assert.Equal(t, "issn", Key("issn*").String())
+	assert.Equal(t, "issn", Key("issn=").String())
 	assert.Equal(t, "issn", Key("issn").String())
+	assert.Equal(t, "issn", Key("issn*=").String())
+	assert.Equal(t, "issn", Key("issn=*").String())
 	assert.Equal(t, "doi", Key("doi*").String())
+	assert.Equal(t, "doi", Key("doi=").String())
 	assert.Equal(t, "doi", Key("doi*=").String())
 	assert.Equal(t, "doi", Key("doi=*").String())
 }
@@ -157,9 +161,9 @@ func Test_KvPairExpand(t *testing.T) {
 	//	  - KvPair{'submitter', '/users/8b/37/da/5e/8b37da5e-971c-4fae-a5d9-2fd80ee5370d'}
 
 	value := "moo"
-	kvPair := KvPair{Key("source"), value}  // this is our KvPair that we wish to expand
-	duplicateMoos := []string{"mo", "moooo", "mu"}      // we need to pre-populate the db with duplicates
-	var expected []KvPair                               // these are expected KvPairs that will be returned by Expand()
+	kvPair := KvPair{Key("source"), value}         // this is our KvPair that we wish to expand
+	duplicateMoos := []string{"mo", "moooo", "mu"} // we need to pre-populate the db with duplicates
+	var expected []KvPair                          // these are expected KvPairs that will be returned by Expand()
 
 	// First, store some duplicate values
 	for _, dupe := range duplicateMoos {
@@ -243,8 +247,8 @@ func Test_FuncExpand(t *testing.T) {
 
 	value := "moo"
 	kvPair := KvPair{Key("source="), value}  // this is our KvPair that we wish to expand
-	duplicateMoos := []string{"mo", "moooo"}// "mu"}      // we need to pre-populate the db with duplicates
-	var expected []KvPair                               // these are expected KvPairs that will be returned by Expand()
+	duplicateMoos := []string{"mo", "moooo"} // "mu"}      // we need to pre-populate the db with duplicates
+	var expected []KvPair                    // these are expected KvPairs that will be returned by Expand()
 
 	// First, store some duplicate values
 	for _, dupe := range duplicateMoos {
@@ -259,5 +263,3 @@ func Test_FuncExpand(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 4, len(expandedPairs.qps))
 }
-
-
