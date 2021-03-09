@@ -134,6 +134,16 @@ func (kl KeyList) KeySet() KeySet {
 
 type KeySet []Key
 
+func (ks KeySet) Contains(key Key) bool {
+	for i := range ks {
+		if key.String() == ks[i].String() {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Encapsulates an ES query and the Keys it requires for evaluation
 type Template struct {
 	Template template.Template
