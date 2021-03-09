@@ -19,6 +19,7 @@ package query
 import (
 	"github.com/stretchr/testify/assert"
 	"log"
+	"sort"
 	"strings"
 	"testing"
 	"text/template"
@@ -36,6 +37,16 @@ func Test_UrlQueryEscFunc(t *testing.T) {
 func Test_UrlQueryEscFuncPathologicalTitle(t *testing.T) {
 	title := "Loop-Mediated Isothermal Amplification for Detection of the 5.8S Ribosomal Ribonucleic Acid Internal Transcribed Spacer 2 Gene Found in &lt;i&gt;Trypanosoma brucei gambiense&lt;/i&gt;."
 	log.Printf("%s", urlQueryEscFunc(title))
+}
+
+func Test_Sort(t *testing.T) {
+	locators := "johnshopkins.edu:hopkinsid:427B19,johnshopkins.edu:jhed:kgreen66,johnshopkins.edu:employeeid:00273821"
+	x := strings.Split(locators, ",")
+	sort.Slice(x, func(i, j int) bool {
+		return x[i] < x[j]
+	})
+
+	log.Printf("%v", x)
 }
 
 func Test_Eval(t *testing.T) {

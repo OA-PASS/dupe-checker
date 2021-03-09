@@ -27,6 +27,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"text/template"
 )
@@ -518,7 +519,10 @@ func extractValuesFromHitSource(keys KeySet, hitSource map[string]interface{}) (
 					for i := range array {
 						values = append(values, array[i].(string))
 					}
-					result = append(result, strings.Join(values, ",")) // TODO string join
+					sort.Slice(values, func(i, j int) bool {
+						return values[i] < values[j]
+					})
+					result = append(result, strings.Join(values, ","))
 				default:
 					panic(fmt.Sprintf("Unhandled array type processing a Hit []interface{} in _source: %v", arrayType))
 				}
