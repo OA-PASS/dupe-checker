@@ -37,7 +37,7 @@ type planBuilderImpl struct {
 	children  []*planBuilderImpl
 	templates []*tmplBuilderImpl
 	active    *tmplBuilderImpl
-	store *persistence.Store
+	store     *persistence.Store
 }
 
 func (pb *planBuilderImpl) Children() []Plan {
@@ -75,7 +75,7 @@ func newPlanBuilder(store *persistence.Store) *planBuilderImpl {
 }
 
 func (pb *planBuilderImpl) addChildPlanBuilder(op QueryOp) *planBuilderImpl {
-	child := &planBuilderImpl{oper: op}
+	child := &planBuilderImpl{oper: op, store: pb.store}
 	pb.children = append(pb.children, child)
 	return child
 }

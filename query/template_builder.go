@@ -209,6 +209,15 @@ func (qp QueryPairs) Clone() QueryPairs {
 	return clone
 }
 
+func (qp QueryPairs) ContainsValue(value string) bool {
+	for i := range qp {
+		if qp[i].Value == value {
+			return true
+		}
+	}
+	return false
+}
+
 // ExpandedPairs is a slice of QueryPairs.  An ExpandedPairs represents the results of expansion on a []KvPair.
 type ExpandedPairs struct {
 	qps []QueryPairs
@@ -217,6 +226,9 @@ type ExpandedPairs struct {
 // Expand the ExpandedPairs by copying each QueryPairs and replacing every instance of 'replace' with 'replacement'
 func (ep ExpandedPairs) Expand(replace, replacement KvPair) ExpandedPairs {
 	for i := range ep.qps {
+		if !ep.qps[i].ContainsValue(replace.Value) {
+			continue
+		}
 		clonedQp := ep.qps[i].Clone()
 		clonedQp.Replace(replace, replacement)
 		ep.qps = append(ep.qps, clonedQp)
@@ -536,25 +548,33 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 	// TODO move the http.Client{} used by performQuery to the template struct like store.
 	client := http.Client{}
 
-	if query, err := qt.eval(keys); err != nil {
+	// expand each key
+	if expandedPairs, err := expand(keys, qt.store); err != nil {
+		log.Printf("Error expanding keys %v: %s", keys, err.Error())
 		return false, err
 	} else {
-		// invoke query, obtain result.
-		if match, err := performQuery(query, ElasticSearchClient{
-			client,
-		}, keys); err != nil {
-			return true, err
-		} else {
-			//match.PassType = container.
-			match.PassUri = container.Uri()
-			match.PassType = container.PassType()
-			match.ContainerProperties.SourceLastModified = container.LastModified()
-			match.ContainerProperties.SourceLastModifiedBy = container.LastModifiedBy()
-			match.ContainerProperties.SourceCreated = container.Created()
-			match.ContainerProperties.SourceCreatedBy = container.CreatedBy()
+		for _, qp := range expandedPairs.qps {
+			if query, err := qt.eval(qp); err != nil {
+				return false, err
+			} else {
+				// invoke query, obtain result.
+				if match, err := performQuery(query, ElasticSearchClient{
+					client,
+				}, keys); err != nil {
+					return true, err
+				} else {
+					//match.PassType = container.
+					match.PassUri = container.Uri()
+					match.PassType = container.PassType()
+					match.ContainerProperties.SourceLastModified = container.LastModified()
+					match.ContainerProperties.SourceLastModifiedBy = container.LastModifiedBy()
+					match.ContainerProperties.SourceCreated = container.Created()
+					match.ContainerProperties.SourceCreatedBy = container.CreatedBy()
 
-			if _, handlerErr := handler(match); handlerErr != nil {
-				return true, handlerErr
+					if _, handlerErr := handler(match); handlerErr != nil {
+						return true, handlerErr
+					}
+				}
 			}
 		}
 	}
@@ -562,18 +582,23 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 	return false, nil
 }
 
+// Expands each KvPair in the QueryPairs.  For every expanded KvPair, a new QueryPairs is created, using the expanded
+// value instead of the original value.  The original QueryPairs along with any additional QueryPairs created by this
+// function are returned as ExpandedPairs.
 func expand(queryPair QueryPairs, store *persistence.Store) (ExpandedPairs, error) {
-
+	if store == nil {
+		panic(fmt.Sprintf("cannot expand querypairs, store is nil."))
+	}
 	result := ExpandedPairs{qps: []QueryPairs{queryPair}}
 
 	for _, kvp := range queryPair {
 		if !kvp.RequiresExpansion() {
 			continue
 		}
-		if expandedPairs, err := kvp.Expand(store); err != nil {
+		if expandedKey, err := kvp.Expand(store); err != nil {
 			return ExpandedPairs{}, err
 		} else {
-			for _, expandedPair := range expandedPairs {
+			for _, expandedPair := range expandedKey {
 				result = result.Expand(kvp, expandedPair)
 			}
 		}

@@ -235,7 +235,7 @@ func Test_QueryPairsExpandSingleKvPair(t *testing.T) {
 	assert.EqualValues(t, []KvPair{kvB}, (expanded.qps)[1])
 }
 
-func Test_FuncExpand(t *testing.T) {
+func Test_FuncExpandSingleKvPair(t *testing.T) {
 	dsn := ":memory:"
 	var store persistence.Store
 	var err error
@@ -246,9 +246,9 @@ func Test_FuncExpand(t *testing.T) {
 	}
 
 	value := "moo"
-	kvPair := KvPair{Key("source="), value}  // this is our KvPair that we wish to expand
-	duplicateMoos := []string{"mo", "moooo"} // "mu"}      // we need to pre-populate the db with duplicates
-	var expected []KvPair                    // these are expected KvPairs that will be returned by Expand()
+	kvPair := KvPair{Key("source="), value}        // this is our KvPair that we wish to expand
+	duplicateMoos := []string{"mo", "moooo", "mu"} // we need to pre-populate the db with duplicates
+	var expected []KvPair                          // these are expected KvPairs that will be returned by Expand()
 
 	// First, store some duplicate values
 	for _, dupe := range duplicateMoos {
@@ -261,5 +261,80 @@ func Test_FuncExpand(t *testing.T) {
 	// expand kvPair
 	expandedPairs, err = expand([]KvPair{kvPair}, &store)
 	assert.Nil(t, err)
-	assert.Equal(t, 4, len(expandedPairs.qps))
+	assert.Equal(t, len(duplicateMoos)+1, len(expandedPairs.qps))
+}
+
+func Test_FuncExpandMultipleKvPair(t *testing.T) {
+	dsn := ":memory:"
+	var store persistence.Store
+	var err error
+	var expandedPairs ExpandedPairs
+
+	if store, err = persistence.NewSqlLiteStore(dsn, persistence.SqliteParams{MaxIdleConn: 2, MaxOpenConn: 10}, nil); err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	k1v1 := "moo"
+	k1v2 := "mo"
+	k1v3 := "mu"
+	k1Values := []string{k1v1, k1v2, k1v3}
+
+	k2v1 := "weston"
+	k2v2 := "edwards"
+	k2v3 := "rowell"
+	k2v4 := "adams"
+	k2v5 := "cartier-bresson"
+	k2Values := []string{k2v1, k2v2, k2v3, k2v4, k2v5}
+
+	origValues := []string{k1v1, k2v1}
+	qp := QueryPairs([]KvPair{{Key("cow="), origValues[0]}, {Key("photo="), origValues[1]}}) // we wish to expand this
+
+	// Prep the database by storing the duplicate values.  In this case we store the original value as the 'source',
+	// and the duplicate value as the 'target'.
+	for i, slice := range [][]string{k1Values[1:], k2Values[1:]} {
+		origValue := origValues[i]
+		for _, dupeValue := range slice {
+			if err := store.StoreDupe(origValue, dupeValue, "type", []string{"match"}, []string{dupeValue}, persistence.DupeContainerAttributes{}); err != nil {
+				assert.Fail(t, err.Error())
+			}
+		}
+	}
+
+	// expand kvPair
+	expandedPairs, err = expand(qp, &store)
+	assert.Nil(t, err)
+	assert.Equal(t, len(k1Values)*len(k2Values), len(expandedPairs.qps))
+
+	counts := make(map[string]int)
+	for _, qps := range expandedPairs.qps {
+		for _, value := range k1Values {
+			if !qps.ContainsValue(value) {
+				continue
+			}
+			if _, exists := counts[value]; exists {
+				counts[value]++
+			} else {
+				counts[value] = 1
+			}
+		}
+		for _, value := range k2Values {
+			if !qps.ContainsValue(value) {
+				continue
+			}
+			if _, exists := counts[value]; exists {
+				counts[value]++
+			} else {
+				counts[value] = 1
+			}
+		}
+	}
+
+	for i := range k1Values {
+		assert.Equal(t, len(k2Values), counts[k1Values[i]])
+	}
+
+	for i := range k2Values {
+		assert.Equal(t, len(k1Values), counts[k2Values[i]])
+	}
+
 }

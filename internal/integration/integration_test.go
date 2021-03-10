@@ -52,6 +52,7 @@ var serviceDeps = map[string]bool{
 
 var (
 	httpClient  http.Client
+	sharedStore persistence.Store
 	environment = env.New()
 	err         error
 
@@ -193,6 +194,16 @@ func TestMain(m *testing.M) {
 
 	// give time for the indexer to process the newly created resources
 	time.Sleep(2 * time.Second)
+
+	if store, err := persistence.NewSqlLiteStore(":memory:", persistence.SqliteParams{
+		MaxIdleConn: 4,
+		MaxOpenConn: 4,
+	}, nil); err != nil {
+		log.Fatalf("Error creating persistence.Store: %s", err)
+	} else {
+		sharedStore = store
+	}
+
 	// call flag.Parse() here if TestMain uses flags
 	os.Exit(m.Run())
 }
@@ -276,7 +287,7 @@ func findDuplicatePublicationsAndUsers(t *testing.T) {
 		panic(err.Error())
 	}
 
-	plan := query.NewPlanDecoder(nil).Decode(queryPlanPubsAndUsers)
+	plan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanPubsAndUsers)
 	log.Printf("Query plan: %s", plan)
 
 	// store candidate duplicate uris and their type in the database
@@ -371,7 +382,7 @@ func findDuplicateAllTheRest(t *testing.T) {
 		panic(err.Error())
 	}
 
-	plan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)
+	plan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)
 	log.Printf("Query plan: %s", plan)
 
 	// store candidate duplicate uris and their type in the database
@@ -469,7 +480,7 @@ func findDuplicateAllTheRest(t *testing.T) {
 
 func findDuplicateSubmission(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
+	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -485,7 +496,7 @@ func findDuplicateSubmission(t *testing.T) {
 
 func findDuplicateUser(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanPubsAndUsers)[model.PassTypeUser]
+	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanPubsAndUsers)[model.PassTypeUser]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -501,7 +512,7 @@ func findDuplicateUser(t *testing.T) {
 
 func findDuplicateRepoCopy(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeRepositoryCopy]
+	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeRepositoryCopy]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -517,7 +528,7 @@ func findDuplicateRepoCopy(t *testing.T) {
 
 func findDuplicateGrant(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeGrant]
+	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeGrant]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -533,7 +544,7 @@ func findDuplicateGrant(t *testing.T) {
 
 func findDuplicateFunder(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeFunder]
+	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeFunder]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -549,7 +560,7 @@ func findDuplicateFunder(t *testing.T) {
 
 func findDuplicatePublication(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(nil).Decode(queryPlanPubsAndUsers)[model.PassTypePublication]
+	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanPubsAndUsers)[model.PassTypePublication]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
@@ -565,7 +576,7 @@ func findDuplicatePublication(t *testing.T) {
 
 func findDuplicateJournalSimple(t *testing.T) {
 	t.Parallel()
-	journalQueryPlan := query.NewPlanDecoder(nil).Decode(queryPlanSimpleJournal)[model.PassTypeJournal]
+	journalQueryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanSimpleJournal)[model.PassTypeJournal]
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
 	times := 0
@@ -580,7 +591,7 @@ func findDuplicateJournalSimple(t *testing.T) {
 
 func findDuplicateJournal(t *testing.T) {
 	t.Parallel()
-	journalQueryPlan := query.NewPlanDecoder(nil).Decode(queryPlanAllTheRest)[model.PassTypeJournal]
+	journalQueryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeJournal]
 	handlerExecuted := false
 	times := 0
 	potentialDuplicates := map[string]int{}
