@@ -253,6 +253,9 @@ type tmplBuilderImpl struct {
 }
 
 func newTmplBuilder(store *persistence.Store) tmplBuilderImpl {
+	if store == nil {
+		panic("persistence store must not be nil")
+	}
 	return tmplBuilderImpl{store: store}
 }
 
