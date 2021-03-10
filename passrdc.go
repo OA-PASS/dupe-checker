@@ -109,7 +109,7 @@ func main() {
 		return false, nil
 	}
 
-	uberPlan := mergePlans(decodeQueryPlan(queryPlanUsersAndPubs), decodeQueryPlan(queryPlanAllTheRest))
+	uberPlan := mergePlans(decodeQueryPlan(queryPlanUsersAndPubs, &store), decodeQueryPlan(queryPlanAllTheRest, &store))
 	p := process.New(uberPlan, matchHandler)
 
 	log.Printf("Beginning dupe check of %s, using index %s and database dsn %s", *startUri, *indexUri, *dsn)
@@ -272,8 +272,8 @@ func newStore(dsn string) (persistence.Store, error) {
 
 // Answers the query plan, one Plan per PASS type.
 // Keys are full RDF URIs representing PASS types, e.g. http://oapass.org/ns/pass#Submission.
-func decodeQueryPlan(planJson string) map[string]query.Plan {
-	return query.NewPlanDecoder(nil).Decode(planJson)
+func decodeQueryPlan(planJson string, store *persistence.Store) map[string]query.Plan {
+	return query.NewPlanDecoder(store).Decode(planJson)
 }
 
 // Answers a Retriever implementation, used to get resources from the PASS repository
