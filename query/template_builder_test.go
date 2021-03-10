@@ -27,16 +27,16 @@ import (
 )
 
 func Test_UrlQueryEscFunc(t *testing.T) {
-	assert.Equal(t, "%3F", urlQueryEscFunc(":"))
-	assert.Equal(t, "%26", urlQueryEscFunc("&"))
-	assert.Equal(t, "%26amp%3B", urlQueryEscFunc("&amp;"))
-	assert.Equal(t, "%26lt%3Bi%26gt%3B", urlQueryEscFunc("&lt;i&gt;"))
-	assert.Equal(t, "%20", urlQueryEscFunc(" "))
+	assert.Equal(t, "%3F", UrlQueryEscFunc(":"))
+	assert.Equal(t, "%26", UrlQueryEscFunc("&"))
+	assert.Equal(t, "%26amp%3B", UrlQueryEscFunc("&amp;"))
+	assert.Equal(t, "%26lt%3Bi%26gt%3B", UrlQueryEscFunc("&lt;i&gt;"))
+	assert.Equal(t, "%20", UrlQueryEscFunc(" "))
 }
 
 func Test_UrlQueryEscFuncPathologicalTitle(t *testing.T) {
 	title := "Loop-Mediated Isothermal Amplification for Detection of the 5.8S Ribosomal Ribonucleic Acid Internal Transcribed Spacer 2 Gene Found in &lt;i&gt;Trypanosoma brucei gambiense&lt;/i&gt;."
-	log.Printf("%s", urlQueryEscFunc(title))
+	log.Printf("%s", UrlQueryEscFunc(title))
 }
 
 func Test_Sort(t *testing.T) {

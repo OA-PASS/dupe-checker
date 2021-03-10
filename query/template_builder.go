@@ -37,7 +37,8 @@ var ErrMissingRequiredKey = errors.New("query: missing required key(s)")
 var ErrPerformingElasticSearchRequest = errors.New("query: error performing search")
 
 // escapes the string to be palatable for an elastic search query
-var urlQueryEscFunc = func(query string) string {
+// exported for test usage
+var UrlQueryEscFunc = func(query string) string {
 	new := strings.ReplaceAll(url.PathEscape(query), ":", "%3F")
 	return strings.ReplaceAll(new, "&", "%26")
 }
@@ -59,7 +60,7 @@ var templateFuncs = template.FuncMap{
 	// The name "inc" is what the function will be called in the template text.
 	"inc":         incFunc,
 	"dec":         decFunc,
-	"urlqueryesc": urlQueryEscFunc,
+	"urlqueryesc": UrlQueryEscFunc,
 	"ismulti":     isMultiFunc,
 }
 

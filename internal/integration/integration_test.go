@@ -27,10 +27,13 @@ import (
 	"dupe-checker/retrieve"
 	"dupe-checker/visit"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/knakk/rdf"
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -55,6 +58,7 @@ var (
 	sharedStore persistence.Store
 	environment = env.New()
 	err         error
+	resources   = make(map[string][]string)
 
 	//go:embed *.ttl
 	ttlResources embed.FS
@@ -153,7 +157,29 @@ func TestMain(m *testing.M) {
 		url := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, containerName)
 		req, _ := http.NewRequest("HEAD", url, nil)
 		if err := perform(req, 200); err == nil {
-			log.Printf("Container %s already exists, skipping initialization", url)
+			log.Printf("Container %s already exists.  Populating existing resources and skipping initialization.", url)
+			req, _ = http.NewRequest("GET", url, nil)
+			req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
+			req.Header.Add("Accept", "application/n-triples")
+			err = performWithHook(req, func(statusCode int, body io.Reader) error {
+				if statusCode != 200 {
+					return errors.New("Expected status code when retrieving " + url)
+				}
+				if trips, err := rdf.NewTripleDecoder(body, rdf.NTriples).DecodeAll(); err != nil {
+					return err
+				} else {
+					for _, trip := range trips {
+						if trip.Pred.String() != model.LdpContainsUri {
+							continue
+						}
+						resources[containerName] = append(resources[containerName], trip.Obj.String())
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				log.Fatalf("Error retrieving existing resources: %s", err)
+			}
 			continue
 		}
 		req, _ = http.NewRequest("PUT", url, nil)
@@ -183,7 +209,15 @@ func TestMain(m *testing.M) {
 			url := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, containerName)
 			req, _ := http.NewRequest("POST", url, bytes.NewReader(resource))
 			req.Header.Add("Content-Type", "text/turtle")
-			if err := perform(req, 201); err != nil {
+			if err := performWithHook(req, func(statusCode int, body io.Reader) error {
+				buf := &bytes.Buffer{}
+				io.Copy(buf, body)
+				if statusCode != 201 {
+					return errors.New(buf.String())
+				}
+				resources[containerName] = append(resources[containerName], strings.TrimSpace(buf.String()))
+				return nil
+			}); err != nil {
 				log.Fatalf("Error creating repository resource under %s from %s: %s", url,
 					testResource.Name(), err.Error())
 			} else {
@@ -191,6 +225,8 @@ func TestMain(m *testing.M) {
 			}
 		}
 	}
+
+	log.Printf("Resources:\n%s", resources)
 
 	// give time for the indexer to process the newly created resources
 	time.Sleep(2 * time.Second)
@@ -480,6 +516,8 @@ func findDuplicateAllTheRest(t *testing.T) {
 
 func findDuplicateSubmission(t *testing.T) {
 	t.Parallel()
+	copySubmission(t)
+
 	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
 	log.Printf("Query plan: %s", queryPlan)
 	handlerExecuted := false
@@ -622,6 +660,129 @@ func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passT
 		controller.ContainerHandler(containerHandler)
 	}
 	controller.Begin(startUri, visit.AcceptAllFilter, visit.AcceptAllFilter)
+}
+
+func copySubmission(t *testing.T) {
+	var req *http.Request
+	var res *http.Response
+	var err error
+
+	// Create a copy of any publication in the repository.
+	pubSource := resources["publications"][0]
+	pubTarget := copy(t, environment, pubSource, fmt.Sprintf("%s/%s/%s", environment.FcrepoBaseUri, "publications", "copiedPub"), func(trips *[]*rdf.Triple) {
+		// noop
+	})
+	log.Printf("Copied %s to %s", pubSource, pubTarget)
+
+	// Find a a submission that has a 'publication' predicate, copy that submission, and update the copy of the submission
+	// to point to the publication copy.
+
+	// Find a Submission with a 'publication' property
+	esQueryUrl := fmt.Sprintf("%s?q=publication:%s", environment.IndexSearchBaseUri, query.UrlQueryEscFunc(pubTarget))
+	req, err = http.NewRequest("GET", esQueryUrl, nil)
+	assert.Nil(t, err)
+	res, err = httpClient.Do(req)
+	assert.Nil(t, err)
+	defer func() { res.Body.Close() }()
+	buf := bytes.Buffer{}
+	io.Copy(&buf, res.Body)
+	hits := &struct {
+		Hits struct {
+			Total int
+			Hits  []struct {
+				Source map[string]interface{} `json:"_source"`
+			}
+		}
+	}{}
+	err = json.Unmarshal(buf.Bytes(), hits)
+	assert.Nil(t, err)
+	assert.True(t, hits.Hits.Total > 0)
+	sourceSubmission := hits.Hits.Hits[0].Source["@id"].(string)
+
+	// Copy that Submission, updating it to reference the copied publication
+	submissionTarget := copy(t, environment, sourceSubmission, fmt.Sprintf("%s/%s/%s", environment.FcrepoBaseUri, "submissions", "copiedSubmission"), func(trips *[]*rdf.Triple) {
+		for i, trip := range *trips {
+			if trip.Pred.String() == fmt.Sprintf("%s%s", model.PassResourceUriPrefix, "publication") {
+				log.Printf("transforming submission publication %s to %s", trip.Obj.String(), pubTarget)
+				pubIri, _ := rdf.NewIRI(pubTarget)
+				(*trips)[i] = &rdf.Triple{trip.Subj, trip.Pred, pubIri}
+			}
+		}
+	})
+	log.Printf("Copied %s to %s", sourceSubmission, submissionTarget)
+}
+
+// Copies the content from sourceUri, transforms the triples, and PUTs a new resource with the transformed content
+// at targetUri.
+//
+// The only valid combination to perform a copy of an RDF resource with knakk/rdf is to use N-Triples serialization in
+// combination with PUT.  It is particularly difficult to transform the RDF of the resource to be copied, especially
+// because knakk/rdf does not allow for null relative URIs.
+func copy(t *testing.T, environment env.Env, sourceUri, targetUri string, transformer func(triples *[]*rdf.Triple)) string {
+	var req *http.Request
+	var res *http.Response
+	var trips []rdf.Triple
+	var err error
+
+	req, err = http.NewRequest("GET", sourceUri, nil)
+	assert.Nil(t, err)
+	req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
+	req.Header.Add("Accept", "application/n-triples")
+
+	res, err = httpClient.Do(req)
+	defer func() { res.Body.Close() }()
+	assert.Nil(t, err)
+
+	b := bytes.Buffer{}
+	_, err = io.Copy(&b, res.Body)
+	assert.Nil(t, err)
+	assert.True(t, res.StatusCode == 200, err)
+
+	var filteredTrips []*rdf.Triple
+	filteredResource := bytes.Buffer{}
+	trips, err = rdf.NewTripleDecoder(&b, rdf.Turtle).DecodeAll()
+	assert.True(t, len(trips) > 0)
+
+	for i := range trips {
+		t := trips[i]
+		if strings.HasPrefix(t.Pred.String(), model.PassResourceUriPrefix) ||
+			strings.HasPrefix(t.Obj.String(), model.PassResourceUriPrefix) {
+			filteredTrips = append(filteredTrips, &t)
+		}
+	}
+
+	// replace the subject
+	subject, _ := rdf.NewIRI(targetUri)
+	for i := range filteredTrips {
+		filteredTrips[i] = &rdf.Triple{Subj: subject, Pred: filteredTrips[i].Pred, Obj: filteredTrips[i].Obj}
+	}
+
+	transformer(&filteredTrips)
+
+	filteredResource = bytes.Buffer{}
+	encoder := rdf.NewTripleEncoder(&filteredResource, rdf.NTriples)
+	var toEncode []rdf.Triple
+	for _, triple := range filteredTrips {
+		toEncode = append(toEncode, *triple)
+	}
+	err = encoder.EncodeAll(toEncode)
+	assert.Nil(t, err)
+	encoder.Close()
+
+	log.Printf("Replaced copy:\n%s", filteredResource.String())
+
+	req, err = http.NewRequest("PUT", targetUri, bytes.NewReader(filteredResource.Bytes()))
+	assert.Nil(t, err)
+	req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
+	req.Header.Add("Content-Type", "application/n-triples")
+
+	res, err = httpClient.Do(req)
+	defer func() { res.Body.Close() }()
+	assert.Nil(t, err)
+	assert.True(t, res.StatusCode == 201, fmt.Sprintf("status code: %v, error: %v", res.StatusCode, err))
+	b = bytes.Buffer{}
+	_, err = io.Copy(&b, res.Body)
+	return string(b.Bytes())
 }
 
 var defaultContainerHandler = func(t *testing.T, queryPlan query.Plan, passType string, matchHandler func(result interface{}) (bool, error)) func(c model.LdpContainer) {

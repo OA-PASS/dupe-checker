@@ -52,6 +52,16 @@ func perform(req *http.Request, assertStatusCode int) error {
 	return nil
 }
 
+func performWithHook(req *http.Request, bodyHook func(statusCode int, body io.Reader) error) error {
+	req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
+	if res, err := httpClient.Do(req); err != nil {
+		return err
+	} else {
+		defer res.Body.Close()
+		return bodyHook(res.StatusCode, res.Body)
+	}
+}
+
 func testResources(shellGlob string, embeddedFs embed.FS) []fs.DirEntry {
 	var matches []fs.DirEntry
 
