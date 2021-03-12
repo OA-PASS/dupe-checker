@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 )
 
@@ -52,7 +51,7 @@ type PlanDecoder interface {
 	Decode(config string) map[string]Plan
 }
 
-type decoder struct{
+type decoder struct {
 	store *persistence.Store
 }
 
@@ -77,7 +76,7 @@ func (d decoder) Decode(config string) map[string]Plan {
 			panic(err)
 		}
 
-		log.Printf("handling: %v", jsonToken)
+		//log.Printf("handling: %v", jsonToken)
 
 		switch jsonToken.(type) {
 		case json.Delim:
@@ -104,7 +103,7 @@ func (d decoder) Decode(config string) map[string]Plan {
 							if p, e := builder.Build(); e != nil {
 								panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 							} else {
-								log.Printf("built %T@%p", p, p)
+								//log.Printf("built %T@%p", p, p)
 							}
 						}
 					case orObj:
@@ -115,7 +114,7 @@ func (d decoder) Decode(config string) map[string]Plan {
 							if p, e := builder.Build(); e != nil {
 								panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 							} else {
-								log.Printf("built %T@%p", p, p)
+								//log.Printf("built %T@%p", p, p)
 							}
 						}
 					case orT:
@@ -123,7 +122,7 @@ func (d decoder) Decode(config string) map[string]Plan {
 							if p, e := (*e.b).Build(); e != nil {
 								panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 							} else {
-								log.Printf("built %T@%p", p, p)
+								//log.Printf("built %T@%p", p, p)
 								_, _ = stack.pop()
 							}
 						}
@@ -131,13 +130,13 @@ func (d decoder) Decode(config string) map[string]Plan {
 						if p, e := b.Build(); e != nil {
 							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 						} else {
-							log.Printf("built %T@%p", p, p)
+							//log.Printf("built %T@%p", p, p)
 						}
 						if e := stack.peek(); e.t == typeToken {
 							if p, e := (*e.b).Build(); e != nil {
 								panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 							} else {
-								log.Printf("built %T@%p", p, p)
+								//log.Printf("built %T@%p", p, p)
 								_, _ = stack.pop()
 							}
 						}
@@ -145,14 +144,14 @@ func (d decoder) Decode(config string) map[string]Plan {
 						if p, e := b.Build(); e != nil {
 							panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 						} else {
-							log.Printf("built %T@%p", p, p)
+							//log.Printf("built %T@%p", p, p)
 						}
 					}
 				} else {
 					if p, e := passTypeBuilder.Build(); e != nil {
 						panic(fmt.Sprintf("error building %T@%p: %s\n%s", p, p, e.Error(), p))
 					} else {
-						log.Printf("built %T@%p", p, p)
+						//log.Printf("built %T@%p", p, p)
 					}
 				}
 			}
@@ -183,7 +182,7 @@ func (d decoder) Decode(config string) map[string]Plan {
 					pb = passTypeBuilder.Or()
 				}
 				b = pb
-				log.Printf("created plan for token '%s': %T@%p", orT, b, &b)
+				//log.Printf("created plan for token '%s': %T@%p", orT, b, &b)
 				stack.push(t, &b)
 
 			// We are inside a query template object.  The object may or may not have been created depending on the order
@@ -201,7 +200,7 @@ func (d decoder) Decode(config string) map[string]Plan {
 			default:
 				if stack.size() > 0 {
 					// TODO recurse up the stack and get the most recent template builder (?)
-					log.Printf("Have a value for '%s': '%v'", stack.peek().t, jsonToken)
+					//log.Printf("Have a value for '%s': '%v'", stack.peek().t, jsonToken)
 
 					// add the key or query to the TemplateBuilder
 					switch e := stack.peek(); e.t {
@@ -226,7 +225,7 @@ func (d decoder) Decode(config string) map[string]Plan {
 					// have a top level key representing a PASS type
 					passType = jsonToken.(string)
 					passTypeBuilder = newPlanBuilder(d.store)
-					log.Printf("Have a PASS type: %v", passType)
+					//log.Printf("Have a PASS type: %v", passType)
 					if p, exists := plans[passType]; exists {
 						panic(fmt.Sprintf("illegal state: %T@%s already exists for type '%s'", p, p, passType))
 					} else {
@@ -238,17 +237,17 @@ func (d decoder) Decode(config string) map[string]Plan {
 				}
 			}
 		}
-		//log.Printf("query stack: %v", stack)
+		////log.Printf("query stack: %v", stack)
 	}
 
-	//log.Printf("%s", builder)
+	////log.Printf("%s", builder)
 	return plans
 }
 
 func (ts *tokenStack) pushE(element tokenElement) {
 	e := element // copy the value
 	ts.elements = append(ts.elements, &e)
-	log.Printf("pushed '%s' '%T@%p'", e.t, e.b, e.b)
+	//log.Printf("pushed '%s' '%T@%p'", e.t, e.b, e.b)
 }
 
 func (ts *tokenStack) push(t token, b *Builder) {
@@ -261,7 +260,7 @@ func (ts *tokenStack) popE() tokenElement {
 	}
 	popped := ts.elements[len(ts.elements)-1]
 	ts.elements = ts.elements[0 : len(ts.elements)-1]
-	log.Printf("popped '%s' '%T@%p'", popped.t, popped.b, popped.b)
+	//log.Printf("popped '%s' '%T@%p'", popped.t, popped.b, popped.b)
 	return *popped
 }
 
