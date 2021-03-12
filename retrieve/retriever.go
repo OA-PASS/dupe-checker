@@ -20,6 +20,7 @@ package retrieve
 
 import (
 	"dupe-checker/model"
+	"errors"
 	"fmt"
 	"github.com/knakk/rdf"
 	"io"
@@ -86,6 +87,12 @@ func (r retriever) Get(uri string) (model.LdpContainer, error) {
 	if tmp, err = os.Open(tmp.Name()); err != nil {
 		log.Fatalf("Unable to open file %s for reading %v", tmp.Name(), err)
 	}
+
+	if res.StatusCode != 200 {
+		buf, _ := os.ReadFile(tmp.Name())
+		return model.LdpContainer{}, errors.New(fmt.Sprintf("Error retrieving %s (status code %d): %s", uri, res.StatusCode, string(buf)))
+	}
+
 	dec := rdf.NewTripleDecoder(tmp, rdf.NTriples)
 	if triples, err = dec.DecodeAll(); err != nil {
 		//return model.LdpContainer{}, fmt.Errorf("retriever: error decoding triples of <%s>: %w", uri, err)
