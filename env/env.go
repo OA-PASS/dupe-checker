@@ -32,6 +32,7 @@ const (
 	INDEX_SEARCH_BASE_URI          = "INDEX_SEARCH_BASE_URI"
 	INDEX_SEARCH_MAX_RESULT_SIZE   = "INDEX_SEARCH_MAX_RESULT_SIZE"
 	IT_SKIP_SERVICE_DEP_CHECK      = "IT_SKIP_SERVICE_DEP_CHECK"
+	IT_PRESERVE_STATE              = "IT_PRESERVE_STATE"
 )
 
 type Env struct {
@@ -46,6 +47,9 @@ type Env struct {
 	// Skips the service dependency check when starting ITs, useful for speeding up iteration when
 	// services are known to be up
 	ItSkipServiceDepCheck,
+	// Will attempt to keep the database and Fedora repository after an IT is complete.  Will only behave as intended
+	// for a single test.
+	ItPreserveState,
 	// Maximum number of concurrent requests allowed to Fedora
 	FcrepoMaxConcurrentRequests,
 	// base http uri of the index search endpoint
@@ -69,6 +73,7 @@ func New() Env {
 		// Skips the service dependency check when starting ITs, useful for speeding up iteration when
 		// services are known to be up
 		ItSkipServiceDepCheck:    getEnv(IT_SKIP_SERVICE_DEP_CHECK, "false"),
+		ItPreserveState:          getEnv(IT_PRESERVE_STATE, "false"),
 		HttpTimeoutMs:            getEnv(HTTP_TIMEOUT_MS, "600000"), // 10 minutes
 		SqliteDsn:                getEnv(SQLITE_DSN, "file:/tmp/dupechecker.db"),
 		IndexSearchBaseUri:       getEnv(INDEX_SEARCH_BASE_URI, "http://elasticsearch:9200/pass/_search"),

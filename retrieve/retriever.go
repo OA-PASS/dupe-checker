@@ -89,7 +89,7 @@ func (r retriever) Get(uri string) (model.LdpContainer, error) {
 	dec := rdf.NewTripleDecoder(tmp, rdf.NTriples)
 	if triples, err = dec.DecodeAll(); err != nil {
 		//return model.LdpContainer{}, fmt.Errorf("retriever: error decoding triples of <%s>: %w", uri, err)
-		log.Fatalf("retriever: error decoding triples of <%s>: %w", uri, err)
+		panic(fmt.Sprintf("retriever: error decoding triples of <%s>: %s", uri, err))
 	} else {
 		tmp.Close()
 		os.Remove(tmp.Name())
