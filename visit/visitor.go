@@ -39,7 +39,7 @@ var NoopErrorHandler = func(e error) {}
 var NoopContainerHandler = func(c model.LdpContainer) {}
 
 // A handler implementation which uses the log package to output a string representation of its argument
-var LogEventHandler = func(e Event) { log.Printf("%s", e) }
+var LogEventHandler = func(e Event) { log.Printf("Target: %s Type: %d Message: %s", e.Target, e.EventType, e.Message) }
 
 // A handler implementation which uses the log package to output a string representation of its argument
 var LogErrorHandler = func(e error) { log.Printf("%s", e.Error()) }
