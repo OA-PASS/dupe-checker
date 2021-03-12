@@ -646,14 +646,18 @@ func findDuplicateJournal(t *testing.T) {
 	assert.Equal(t, 5, times)                    // the match handler executed once for each query that was performed.
 }
 
-func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passType string, matchHandler func(result interface{}) (bool, error), containerHandler func(model.LdpContainer)) {
+func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passType string, matchHandler func(result interface{}) (bool, error), containerHandler func(model.LdpContainer), eventHandler func(event visit.Event)) {
 	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "test_findDuplicateJournal")
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
 
 	controller := visit.NewController(retriever, maxReq)
 	controller.ErrorHandler(visit.NoopErrorHandler)
-	controller.EventHandler(visit.NoopEventHandler)
+	if eventHandler == nil {
+		controller.EventHandler(visit.NoopEventHandler)
+	} else {
+		controller.EventHandler(eventHandler)
+	}
 	if containerHandler == nil {
 		controller.ContainerHandler(defaultContainerHandler(t, queryPlan, passType, matchHandler))
 	} else {
