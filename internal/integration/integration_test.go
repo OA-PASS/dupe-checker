@@ -392,6 +392,31 @@ func Test_DuplicateRun(t *testing.T) {
 	})
 }
 
+func Test_QueryExpansion(t *testing.T) {
+	// loading the static test resources is already completed in TestMain, but we need to craft additional duplicates to
+	// test query expansion.
+
+	// In order to stage the repository for this test, there needs to be at least one pair of Submissions that are
+	// identical, except that one points to one Publication and the other Submission points to a *duplicate* of the
+	// Publication.  So:
+	//   1. Find the static Submission (call it 's', already in the repo, populated by TestMain) that has a single
+	//      submitter and single publication (call it 'psub1')
+	//   2. Update 's' 'psub1' to reference any of the static publications in the repository
+	//   3. Copy 's' (call it s'), and update s' to reference a *different* static publication in the repository (call
+	//      it pubsub2).
+	//
+	// After doing this, the repository should contain:
+	//   1. s referencing pubsub1
+	//   2. s' referencing pubsub2
+	//   3. where pubsub1 is a duplicate of pubsub2
+
+	// Next, visit the repository, marking duplicates.  Users and publications must be marked first, then submissions.
+
+	// visit the repository, marking duplicate users and publications
+	// visit the repository, marking duplicate submissions
+	// verify the count of duplicate submissions
+}
+
 func findDuplicatePublicationsAndUsers(t *testing.T) {
 	if err != nil {
 		panic(err.Error())
