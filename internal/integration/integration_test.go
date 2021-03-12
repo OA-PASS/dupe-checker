@@ -66,27 +66,6 @@ var (
 	//go:embed queryplan-simplejournal.json
 	queryPlanSimpleJournal string
 
-	//go:embed queryplan-orjournal.json
-	queryPlanOrJournal string
-
-	//go:embed queryplan-publication.json
-	queryPlanPub string
-
-	//go:embed queryplan-funder.json
-	queryPlanFunder string
-
-	//go:embed queryplan-grant.json
-	queryPlanGrant string
-
-	//go:embed queryplan-repocopy.json
-	queryPlanRepoCopy string
-
-	//go:embed queryplan-user.json
-	queryPlanUser string
-
-	//go:embed queryplan-submission.json
-	queryPlanSubmission string
-
 	//go:embed queryplan-publicationsandusers.json
 	queryPlanPubsAndUsers string
 
@@ -103,7 +82,7 @@ type passType struct {
 type containerMap map[passType][]string
 
 func (cm containerMap) get(nameOrType string) []string {
-	for passType, _ := range cm {
+	for passType := range cm {
 		if passType.containerName == nameOrType ||
 			passType.typeName == nameOrType {
 			return cm[passType]
@@ -249,7 +228,7 @@ func TestMain(m *testing.M) {
 			req.Header.Add("Content-Type", "text/turtle")
 			if err := performWithHook(req, func(statusCode int, body io.Reader) error {
 				buf := &bytes.Buffer{}
-				io.Copy(buf, body)
+				_, _ = io.Copy(buf, body)
 				if statusCode != 201 {
 					return errors.New(buf.String())
 				}
@@ -298,7 +277,7 @@ func TestMain(m *testing.M) {
 	// Empty out the repository unless IT_PRESERVE_STATE is true, or if a container was previously initialized
 	if !isPreserveState() {
 		var toDelete []passType
-		for container, _ := range resources {
+		for container := range resources {
 			if container.preExists {
 				log.Printf("tear down: preserving contents of pre-existing container %s", container.containerName)
 			} else {
@@ -346,7 +325,7 @@ func matchHandler(t *testing.T, executed *bool, timeInvoked *int, duplicateUris 
 		}
 
 		if store != nil {
-			for candidateDupe, _ := range localDuplicatesMap {
+			for candidateDupe := range localDuplicatesMap {
 				// The resource should never be a duplicate with itself
 				assert.NotEqual(t, match.StripBaseUri(match.PassUri), match.StripBaseUri(candidateDupe))
 				if err := (*store).StoreDupe(match.StripBaseUri(match.PassUri), match.StripBaseUri(candidateDupe), match.PassType, match.MatchFields, match.MatchValues[candidateDupe], persistence.DupeContainerAttributes{
@@ -415,6 +394,7 @@ func Test_QueryExpansion(t *testing.T) {
 	// visit the repository, marking duplicate users and publications
 	// visit the repository, marking duplicate submissions
 	// verify the count of duplicate submissions
+
 }
 
 func findDuplicatePublicationsAndUsers(t *testing.T) {
@@ -780,7 +760,7 @@ func craftDuplicateSubmissionWithDuplicatePublications(t *testing.T) {
 
 	// Create a copy of any publication in the repository.
 	pubSource := resources.get("publications")[0]
-	pubTarget := copy(t, environment, pubSource, fmt.Sprintf("%s/%s/%s", environment.FcrepoBaseUri, "publications", "copiedPub"), func(trips *[]*rdf.Triple) { /* noop*/ })
+	pubTarget := copyFedoraResource(t, environment, pubSource, fmt.Sprintf("%s/%s/%s", environment.FcrepoBaseUri, "publications", "copiedPub"), func(trips *[]*rdf.Triple) { /* noop*/ })
 	log.Printf("Copied %s to %s", pubSource, pubTarget)
 
 	// Find a a submission that has a 'publication' predicate, copy that submission, and update the copy of the submission
@@ -809,7 +789,7 @@ func craftDuplicateSubmissionWithDuplicatePublications(t *testing.T) {
 	sourceSubmission := hits.Hits.Hits[0].Source["@id"].(string)
 
 	// Copy that Submission, updating it to reference the copied publication
-	targetSubmission := copy(t, environment, sourceSubmission, submissionCopyUri, func(trips *[]*rdf.Triple) {
+	targetSubmission := copyFedoraResource(t, environment, sourceSubmission, submissionCopyUri, func(trips *[]*rdf.Triple) {
 		for i, trip := range *trips {
 			if trip.Pred.String() == fmt.Sprintf("%s%s", model.PassResourceUriPrefix, "publication") {
 				log.Printf("transforming submission publication %s to %s", trip.Obj.String(), pubTarget)
@@ -847,8 +827,8 @@ func craftDuplicateSubmissionWithDuplicatePublications(t *testing.T) {
 
 	buf.Reset()
 	enc := rdf.NewTripleEncoder(bufio.NewWriter(&buf), rdf.NTriples)
-	enc.EncodeAll(filteredTriples)
-	enc.Close()
+	_ = enc.EncodeAll(filteredTriples)
+	_ = enc.Close()
 
 	if err := replaceFedoraResource(t, environment, sourceSubmission, buf.Bytes(), "application/n-triples"); err != nil {
 		log.Fatalf("Error replacing resource %s: %s", sourceSubmission, err)
@@ -861,7 +841,7 @@ func craftDuplicateSubmissionWithDuplicatePublications(t *testing.T) {
 // The only valid combination to perform a copy of an RDF resource with knakk/rdf is to use N-Triples serialization in
 // combination with PUT.  It is particularly difficult to transform the RDF of the resource to be copied, especially
 // because knakk/rdf does not allow for null relative URIs.
-func copy(t *testing.T, environment env.Env, sourceUri, targetUri string, transformer func(triples *[]*rdf.Triple)) string {
+func copyFedoraResource(t *testing.T, environment env.Env, sourceUri, targetUri string, transformer func(triples *[]*rdf.Triple)) string {
 	var req *http.Request
 	var res *http.Response
 	var trips []rdf.Triple
@@ -873,7 +853,7 @@ func copy(t *testing.T, environment env.Env, sourceUri, targetUri string, transf
 	req.Header.Add("Accept", "application/n-triples")
 
 	res, err = httpClient.Do(req)
-	defer func() { res.Body.Close() }()
+	defer func() { _ = res.Body.Close() }()
 	assert.Nil(t, err)
 
 	b := bytes.Buffer{}
@@ -911,7 +891,7 @@ func copy(t *testing.T, environment env.Env, sourceUri, targetUri string, transf
 	}
 	err = encoder.EncodeAll(toEncode)
 	assert.Nil(t, err)
-	encoder.Close()
+	_ = encoder.Close()
 
 	log.Printf("Replaced copy:\n%s", filteredResource.String())
 
@@ -921,7 +901,7 @@ func copy(t *testing.T, environment env.Env, sourceUri, targetUri string, transf
 	req.Header.Add("Content-Type", "application/n-triples")
 
 	res, err = httpClient.Do(req)
-	defer func() { res.Body.Close() }()
+	defer func() { _ = res.Body.Close() }()
 	assert.Nil(t, err)
 	assert.True(t, res.StatusCode == 201, fmt.Sprintf("status code: %v, error: %v", res.StatusCode, err))
 	b = bytes.Buffer{}
