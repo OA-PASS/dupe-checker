@@ -34,6 +34,7 @@ import (
 	"github.com/knakk/rdf"
 	"github.com/logrusorgru/aurora/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"io"
 	"log"
 	"net/http"
@@ -203,29 +204,192 @@ func Test_DuplicateRun(t *testing.T) {
 }
 
 func Test_QueryExpansion(t *testing.T) {
+	initializeContainersAndResources()
+	createPersistenceStore()
+
+	var (
+		err error
+		req *http.Request
+		res *http.Response
+		buf bytes.Buffer
+
+		s         []rdf.Triple
+		sUri      string
+		sprime    []rdf.Triple
+		sprimeUri string
+		psub1     string
+		psub2     string
+	)
+
 	// loading the static test resources is already completed in TestMain, but we need to craft additional duplicates to
 	// test query expansion.
 
 	// In order to stage the repository for this test, there needs to be at least one pair of Submissions that are
 	// identical, except that one points to one Publication and the other Submission points to a *duplicate* of the
 	// Publication.  So:
-	//   1. Find the static Submission (call it 's', already in the repo, populated by TestMain) that has a single
-	//      submitter and single publication (call it 'psub1')
-	//   2. Update 's' 'psub1' to reference any of the static publications in the repository
-	//   3. Copy 's' (call it s'), and update s' to reference a *different* static publication in the repository (call
-	//      it pubsub2).
-	//
+	//   1a. Find the static Submission (call it 's', already in the repo, populated by TestMain) that has a single
+	//       submitter and single publication (call it 'psub1')
+	//   1b. While we're at it, collect 'sprime' as well for use in step 3.
+	req, err = http.NewRequest("GET", fmt.Sprintf("%s?q=%s:%s", environment.IndexSearchBaseUri, "@type", "Submission"), nil)
+	assert.Nil(t, err)
+	res, err = httpClient.Do(req)
+	assert.Nil(t, err)
+	assert.Equal(t, 200, res.StatusCode)
+	buf = bytes.Buffer{}
+	defer res.Body.Close()
+	io.Copy(&buf, res.Body)
+	sHits := struct {
+		Hits struct {
+			Total int
+			Hits  []struct {
+				Source struct {
+					Id          string `json:"@id"`
+					Submitter   string
+					Publication string
+				} `json:"_source"`
+			}
+		}
+	}{}
+	json.Unmarshal(buf.Bytes(), &sHits)
+	assert.True(t, sHits.Hits.Total > 1)
+	found := 0
+	for _, hit := range sHits.Hits.Hits {
+		if hit.Source.Publication != "" && hit.Source.Submitter != "" {
+			suri := hit.Source.Id
+			req, err = newFedoraRequest("GET", suri, nil, "application/n-triples")
+			assert.Nil(t, err)
+			res, err = httpClient.Do(req)
+			assert.Nil(t, err)
+			defer res.Body.Close()
+			buf.Reset()
+			io.Copy(&buf, res.Body)
+
+			if found == 0 {
+				sUri = suri
+				s, err = rdf.NewTripleDecoder(bytes.NewReader(buf.Bytes()), rdf.NTriples).DecodeAll()
+				assert.Nil(t, err)
+				found++
+				continue
+			}
+
+			if found == 1 {
+				sprimeUri = suri
+				sprime, err = rdf.NewTripleDecoder(bytes.NewReader(buf.Bytes()), rdf.NTriples).DecodeAll()
+				assert.Nil(t, err)
+			}
+
+			if found >= 1 {
+				break
+			}
+		}
+	}
+	assert.True(t, len(sUri) > 0)
+	assert.True(t, len(sprimeUri) > 0)
+	require.NotEqual(t, sUri, sprimeUri)
+	assert.True(t, len(s) > 0)
+	assert.True(t, len(sprime) > 0)
+	require.NotEqualValues(t, s, sprime)
+
+	//   2a. Update 's' 'psub1' to reference any of the static publications in the repository (by default it points to a
+	//      production PASS uri)
+	//   2b. While we're at it, capture 'psub2' for use in step 3.
+	req, err = http.NewRequest("GET", fmt.Sprintf("%s?q=%s:%s+%s:%s", environment.IndexSearchBaseUri, "@type", "Publication", "_exists_", "doi"), nil)
+	assert.Nil(t, err)
+	res, err = httpClient.Do(req)
+	assert.Nil(t, err)
+	assert.Equal(t, 200, res.StatusCode)
+	buf = bytes.Buffer{}
+	defer res.Body.Close()
+	io.Copy(&buf, res.Body)
+	pHits := struct {
+		Hits struct {
+			Total int
+			Hits  []struct {
+				Source struct {
+					Id string `json:"@id"`
+				} `json:"_source"`
+			}
+		}
+	}{}
+	json.Unmarshal(buf.Bytes(), &pHits)
+	assert.True(t, pHits.Hits.Total > 1)
+	found = 0
+	for _, hit := range pHits.Hits.Hits {
+		if hit.Source.Id != "" && found == 0 {
+			psub1 = hit.Source.Id
+			found++
+			continue
+		}
+		if hit.Source.Id != "" && found == 1 {
+			psub2 = hit.Source.Id
+		}
+
+		if found >= 1 {
+			break
+		}
+	}
+	assert.True(t, len(psub1) > 0)
+	assert.True(t, len(psub2) > 0)
+	require.NotEqual(t, psub1, psub2)
+
+	s = copyTriples(s, compositeTransformer(
+		passTypeFilter(),
+		passPredicateAndObjectFilter(),
+		publicationTransformer("*", psub1)))
+
+	//   3a. Copy 's' (call it s'), and update s' to reference a *different* static publication in the repository (call
+	//       it pubsub2).
+	//   3b. Create a *new* resource in the repository from s'
+
+	sprimeUri = fmt.Sprintf("%s/%s/%s", environment.FcrepoBaseUri, "submissions", "dupeSubmission")
+	sprime = copyTriples(sprime, compositeTransformer(
+		passTypeFilter(),
+		passPredicateAndObjectFilter(),
+		subjectTransformer("*", sprimeUri),
+		publicationTransformer("*", psub2)))
+
+	// Replace the repository version of s with the transformed version
+	buf.Reset()
+	w := bufio.NewWriter(&buf)
+	encoder := rdf.NewTripleEncoder(w, rdf.NTriples)
+	encoder.EncodeAll(s)
+	encoder.Close()
+	err = replaceFedoraResource(t, environment, sUri, buf.Bytes(), "application/n-triples")
+	assert.Nil(t, err)
+	log.Printf("Replaced the content of %s", sUri)
+
+	// Create a new repository resource based on sprime
+	buf.Reset()
+	w = bufio.NewWriter(&buf)
+	encoder = rdf.NewTripleEncoder(w, rdf.NTriples)
+	encoder.EncodeAll(sprime)
+	encoder.Close()
+	err = replaceFedoraResource(t, environment, sprimeUri, buf.Bytes(), "application/n-triples")
+	assert.Nil(t, err)
+	log.Printf("Replaced the content of %s", sprimeUri)
+
 	// After doing this, the repository should contain:
 	//   1. s referencing pubsub1
 	//   2. s' referencing pubsub2
 	//   3. where pubsub1 is a duplicate of pubsub2
 
 	// Next, visit the repository, marking duplicates.  Users and publications must be marked first, then submissions.
+	findDuplicatePublicationsAndUsers(t)
+
+	queryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
+	result := duplicateTestResult{dupes: make(map[string]int)}
+
+	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("Submission"), nil, nil)
+
+	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 4, result.times)
+	assert.Equal(t, 4, len(result.dupes))
 
 	// visit the repository, marking duplicate users and publications
 	// visit the repository, marking duplicate submissions
 	// verify the count of duplicate submissions
 
+	cleanup()
 }
 
 func findDuplicatePublicationsAndUsers(t *testing.T) {
@@ -545,7 +709,7 @@ func craftDuplicateSubmissionWithDuplicatePublications(t *testing.T) {
 
 	// Create a copy of any publication in the repository.
 	pubSource := resources.get("publications")[0]
-	pubTarget := copyFedoraResource(t, environment, pubSource, fmt.Sprintf("%s/%s/%s", environment.FcrepoBaseUri, "publications", "copiedPub"), func(trips *[]*rdf.Triple) { /* noop*/ })
+	pubTarget := copyFedoraResource(t, environment, pubSource, fmt.Sprintf("%s/%s/%s", environment.FcrepoBaseUri, "publications", "copiedPub"), noopTripleTransformer)
 	log.Printf("Copied %s to %s", pubSource, pubTarget)
 
 	// Find a a submission that has a 'publication' predicate, copy that submission, and update the copy of the submission
@@ -574,15 +738,8 @@ func craftDuplicateSubmissionWithDuplicatePublications(t *testing.T) {
 	sourceSubmission := hits.Hits.Hits[0].Source["@id"].(string)
 
 	// Copy that Submission, updating it to reference the copied publication
-	targetSubmission := copyFedoraResource(t, environment, sourceSubmission, submissionCopyUri, func(trips *[]*rdf.Triple) {
-		for i, trip := range *trips {
-			if trip.Pred.String() == fmt.Sprintf("%s%s", model.PassResourceUriPrefix, "publication") {
-				log.Printf("transforming submission publication %s to %s", trip.Obj.String(), pubTarget)
-				pubIri, _ := rdf.NewIRI(pubTarget)
-				(*trips)[i] = &rdf.Triple{trip.Subj, trip.Pred, pubIri}
-			}
-		}
-	})
+	targetSubmission := copyFedoraResource(t, environment, sourceSubmission, submissionCopyUri,
+		publicationTransformer("*", pubTarget))
 	log.Printf("Copied %s to %s", sourceSubmission, targetSubmission)
 
 	// Update the original submission (the submission that was the source of the copied submission) to reference

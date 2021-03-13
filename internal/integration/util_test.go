@@ -332,3 +332,25 @@ func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passT
 	}
 	controller.Begin(startUri, visit.AcceptAllFilter, visit.AcceptAllFilter)
 }
+
+func newFedoraRequest(method, url string, body io.Reader, mediaType string) (*http.Request, error) {
+	if req, err := http.NewRequest(method, url, body); err != nil {
+		return nil, err
+	} else {
+		req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
+		if mediaType != "" {
+			header := ""
+			switch strings.ToUpper(method) {
+			case "GET":
+				header = "Accept"
+			case "POST", "PUT":
+				header = "Content-Type"
+			default:
+				panic("Unhandled media type " + mediaType)
+			}
+			req.Header.Add(header, mediaType)
+		}
+
+		return req, nil
+	}
+}

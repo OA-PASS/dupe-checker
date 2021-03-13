@@ -16,6 +16,85 @@ import (
 	"testing"
 )
 
+type tripleTransformer func(trips *[]*rdf.Triple)
+
+var noopTripleTransformer = tripleTransformer(func(trips *[]*rdf.Triple) { /* noop*/ })
+
+func compositeTransformer(transformFunc ...tripleTransformer) tripleTransformer {
+	return func(trips *[]*rdf.Triple) {
+		for _, transformer := range transformFunc {
+			transformer(trips)
+		}
+	}
+}
+
+// Replaces the subject of all triples when the subject IRI equals 'replace' with 'replacement'.  As a special case, if
+// 'replace' is '*', then all subjects are replaced with performing any equality comparison
+func subjectTransformer(replace, replacement string) tripleTransformer {
+	return func(trips *[]*rdf.Triple) {
+		subjIri, _ := rdf.NewIRI(replacement)
+		for i, trip := range *trips {
+			if trip == nil {
+				continue
+			}
+			if trip.Subj.String() == replace || replace == "*" {
+				(*trips)[i] = &rdf.Triple{subjIri, trip.Pred, trip.Obj}
+			}
+		}
+	}
+}
+
+// Replaces the object of all triples with the predicate http://oapass.org/ns/pass#publication when the object
+// equals 'replace' with 'replacement'.  If 'replace' equals the special case '*', then 'replacement' is set as the
+// value without performing any equality comparison.
+func publicationTransformer(replace, replacement string) tripleTransformer {
+	return func(trips *[]*rdf.Triple) {
+		for i, trip := range *trips {
+			if trip == nil {
+				continue
+			}
+			if trip.Pred.String() == fmt.Sprintf("%s%s", model.PassResourceUriPrefix, "publication") &&
+				(trip.Obj.String() == replace || replace == "*") {
+				log.Printf("transforming submission publication %s to %s", replace, replacement)
+				pubIri, _ := rdf.NewIRI(replacement)
+				(*trips)[i] = &rdf.Triple{trip.Subj, trip.Pred, pubIri}
+			}
+		}
+	}
+}
+
+// Removes all triples with rdf:type not prefixed by "http://oapass.org/ns/pass#"
+func passTypeFilter() tripleTransformer {
+	return func(trips *[]*rdf.Triple) {
+		for i, trip := range *trips {
+			if trip == nil {
+				continue
+			}
+			if (*trip).Pred.String() == model.RdfTypeUri {
+				if !strings.HasPrefix((*trip).Obj.String(), model.PassResourceUriPrefix) {
+					(*trips)[i] = nil
+				}
+			}
+		}
+	}
+}
+
+// Removes all triples that do not have a predicate prefixed by "http://oapass.org/ns/pass#", or triples that do not
+// have an object prefixed by "http://oapass.org/ns/pass#"
+func passPredicateAndObjectFilter() tripleTransformer {
+	return func(trips *[]*rdf.Triple) {
+		for i, trip := range *trips {
+			if trip == nil {
+				continue
+			}
+			if !strings.HasPrefix(trip.Pred.String(), model.PassResourceUriPrefix) &&
+				!strings.HasPrefix(trip.Obj.String(), model.PassResourceUriPrefix) {
+				(*trips)[i] = nil
+			}
+		}
+	}
+}
+
 // Culls nil elements from the provided slice
 func removeNils(trips *[]*rdf.Triple) []*rdf.Triple {
 	var result []*rdf.Triple
@@ -23,6 +102,33 @@ func removeNils(trips *[]*rdf.Triple) []*rdf.Triple {
 		if (*trips)[i] != nil {
 			result = append(result, (*trips)[i])
 		}
+	}
+
+	return result
+}
+
+func copyTriples(source []rdf.Triple, transformer tripleTransformer) []rdf.Triple {
+	var result []rdf.Triple
+
+	if transformer == nil {
+		for _, triple := range source {
+			result = append(result, triple)
+		}
+		return result
+	}
+
+	transformable := make([]*rdf.Triple, len(source))
+
+	for i, triple := range source {
+		triple := triple
+		transformable[i] = &triple
+	}
+
+	transformer(&transformable)
+	nilSafe := removeNils(&transformable)
+
+	for _, triple := range nilSafe {
+		result = append(result, *triple)
 	}
 
 	return result
@@ -149,6 +255,8 @@ func replaceFedoraResource(t *testing.T, environment env.Env, uri string, body [
 	if res, err = httpClient.Do(req); err != nil {
 		return err
 	}
-	assert.True(t, res.StatusCode < 300)
+	defer res.Body.Close()
+
+	assert.True(t, res.StatusCode < 300, "%s %s %s: %v", "PUT", uri, res.StatusCode, res.Body)
 	return err
 }
