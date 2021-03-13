@@ -254,8 +254,20 @@ func createPersistenceStore() {
 	}, nil); err != nil {
 		log.Fatalf("Error creating persistence.Store: %s", err)
 	} else {
-		s := persistence.NewRetrySqliteStore(store, 500*time.Millisecond, 1.2, 5, sqlite3.ErrLocked, sqlite3.ErrBusy)
+		var retryIntervalMs int
+		var maxTries int
+		if retryIntervalMs, err = strconv.Atoi(environment.ItSqliteRetryIntervalMs); err != nil {
+			log.Fatalf("Invalid value for %s, must be a positive integer (was '%v')",
+				env.IT_SQLITE_RETRY_INTERVAL_MS, environment.ItSqliteRetryIntervalMs)
+		}
+		if maxTries, err = strconv.Atoi(environment.ItSqliteMaxRetry); err != nil {
+			log.Fatalf("Invalid value for %s, must be a positive integer (was '%v')",
+				env.IT_SQLITE_MAX_RETRY, environment.ItSqliteMaxRetry)
+		}
+
+		s := persistence.NewRetrySqliteStore(store, time.Duration(retryIntervalMs)*time.Millisecond, 1.2, maxTries, sqlite3.ErrLocked, sqlite3.ErrBusy)
 		sharedStore = &s
+		log.Printf("Initialized %T@%p", sharedStore, sharedStore)
 	}
 }
 
