@@ -32,27 +32,16 @@ import (
 	"errors"
 	"fmt"
 	"github.com/knakk/rdf"
-	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
-
-var serviceDeps = map[string]bool{
-	"activemq:8161":      false,
-	"activemq:61613":     false,
-	"activemq:61616":     false,
-	"fcrepo:8080":        false,
-	"elasticsearch:9200": false,
-}
 
 var (
 	// the http client shared by the ITs
@@ -79,6 +68,13 @@ var (
 	//go:embed queryplan-alltherest.json
 	queryPlanAllTheRest string
 )
+
+type duplicateTestResult struct {
+	dupes         map[string]int
+	executed      bool
+	expectedTimes int
+	times         int
+}
 
 // Encapsulates static properties regarding a PASS type
 type passType struct {
@@ -152,244 +148,25 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	// Fedora, ElasticSearch, ActiveMQ and the Indexer all need to be up.
-
-	// Verify tcp connectivity to dependencies
-
-	skipDeps, _ := strconv.ParseBool(environment.ItSkipServiceDepCheck)
-	if !skipDeps {
-		wg := sync.WaitGroup{}
-		wg.Add(len(serviceDeps))
-		mu := sync.Mutex{}
-
-		for hostAndPort := range serviceDeps {
-			go func(hostAndPort string) {
-				timeout := 5 * time.Second
-				start := time.Now()
-
-				for !timedout(start, timeout) {
-					fmt.Printf("Dialing %v\n", hostAndPort)
-					if c, err := net.Dial("tcp", hostAndPort); err == nil {
-						_ = c.Close()
-						mu.Lock()
-						serviceDeps[hostAndPort] = true
-						mu.Unlock()
-						fmt.Printf("Successfully connected to %v\n", hostAndPort)
-						wg.Done()
-						break
-					} else {
-						time.Sleep(500 * time.Millisecond)
-						if timedout(start, timeout) {
-							wg.Done()
-							break
-						}
-					}
-				}
-			}(hostAndPort)
-		}
-
-		wg.Wait()
-
-		for k, v := range serviceDeps {
-			if !v {
-				fmt.Printf("failed to connect to %v", k)
-				os.Exit(-1)
-			}
-		}
+	serviceDeps := map[string]bool{
+		"activemq:8161":      false,
+		"activemq:61613":     false,
+		"activemq:61616":     false,
+		"fcrepo:8080":        false,
+		"elasticsearch:9200": false,
 	}
+	checkDependentServices(&serviceDeps)
 
-	// Create parent containers, http://fcrepo:8080/fcrepo/rest/journals, http://fcrepo:8080/fcrepo/rest/users, etc.
-	// Populate them with test resources.
-	// If Fedora already has a container, skip the initialization of resources for that container.  Any pre-existing
-	// containers will not be deleted after.
-	for _, typeContainer := range typeContainers {
-		containerName := typeContainer.containerName
-		url := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, containerName)
-		req, _ := http.NewRequest("HEAD", url, nil)
-		if err := perform(req, 200); err == nil {
-			log.Printf("setup: container %s already exists.  Skipping initialization.", url)
-			typeContainer.preExists = true
-			req, _ = http.NewRequest("GET", url, nil)
-			req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-			req.Header.Add("Accept", "application/n-triples")
-			err = performWithHook(req, func(statusCode int, body io.Reader) error {
-				if statusCode != 200 {
-					return errors.New("Expected status code when retrieving " + url)
-				}
-				if trips, err := rdf.NewTripleDecoder(body, rdf.NTriples).DecodeAll(); err != nil {
-					return err
-				} else {
-					for _, trip := range trips {
-						if trip.Pred.String() != model.LdpContainsUri {
-							continue
-						}
-						if entry, exists := resources[typeContainer]; exists {
-							entry = append(entry, trip.Obj.String())
-						} else {
-							resources[typeContainer] = []string{trip.Obj.String()}
-						}
-					}
-				}
-				return nil
-			})
-			if err != nil {
-				log.Fatalf("Error retrieving existing resources: %s", err)
-			}
-			continue
-		}
+	initializeContainersAndResources()
 
-		req, _ = http.NewRequest("PUT", url, nil)
-		req.Header.Add("Content-Type", "application/n-triples")
-		if err := perform(req, 201); err != nil {
-			log.Fatalf("Error creating container %s: %s", url, err.Error())
-		} else {
-			log.Printf("setup: created container %s", url)
-		}
-
-		// Create resources in Fedora for the given container, at least two duplicates of each resource:
-		//  Journal
-		//  Publication
-		//  User
-		//  Grant
-		//  Publisher
-		//  Funder
-		//  RepositoryCopy
-		//  User
-		//  Submission
-		//
-		// Some resources have multiple criteria; e.g a duplicate Publication can be found by (DOI or PMID) or Title.  A
-		// duplicate Journal can be found by NLMTA or (Journal Name and ISSN).  Ideally there would be duplicates that
-		// satisfy each criteria (e.g. a duplicate Journal with the same NLMTA, and a duplicate Journal with the name
-		// and ISSN.
-
-		for _, testResource := range testResources(fmt.Sprintf("pass-%s*.ttl", containerName), ttlResources) {
-			resource, _ := ttlResources.ReadFile(testResource.Name())
-			url := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, containerName)
-			req, _ := http.NewRequest("POST", url, bytes.NewReader(resource))
-			req.Header.Add("Content-Type", "text/turtle")
-			if err := performWithHook(req, func(statusCode int, body io.Reader) error {
-				buf := &bytes.Buffer{}
-				_, _ = io.Copy(buf, body)
-				if statusCode != 201 {
-					return errors.New(buf.String())
-				}
-				if entry, exists := resources[typeContainer]; exists {
-					entry = append(entry, strings.TrimSpace(buf.String()))
-				} else {
-					resources[typeContainer] = []string{strings.TrimSpace(buf.String())}
-				}
-				return nil
-			}); err != nil {
-				log.Fatalf("Error creating repository resource under %s from %s: %s", url,
-					testResource.Name(), err.Error())
-			} else {
-				log.Printf("setup: created test resource in repository under %s from %s", url, testResource.Name())
-			}
-		}
-	}
-
-	// give time for the indexer to process the newly created resources
-	time.Sleep(2 * time.Second)
-
-	var storeDsn string
-
-	if isPreserveState() {
-		if f, e := os.CreateTemp("", "passrdcit-*.db"); e != nil {
-			log.Fatalf("error creating temporary file for database: %s", e)
-		} else {
-			storeDsn = fmt.Sprintf("file:%s", f.Name())
-			log.Printf("setup: preserving database state at %s per %s=%s", f.Name(), env.IT_PRESERVE_STATE, environment.ItPreserveState)
-		}
-	} else {
-		storeDsn = ":memory:"
-	}
-	if store, err := persistence.NewSqlLiteStore(storeDsn, persistence.SqliteParams{
-		MaxIdleConn: 4,
-		MaxOpenConn: 4,
-	}, nil); err != nil {
-		log.Fatalf("Error creating persistence.Store: %s", err)
-	} else {
-		sharedStore = persistence.NewRetrySqliteStore(store, 500*time.Millisecond, 1.2, 5, sqlite3.ErrLocked, sqlite3.ErrBusy)
-	}
+	createPersistenceStore()
 
 	// call flag.Parse() here if TestMain uses flags
 	exitCode := m.Run()
 
-	// Empty out the repository unless IT_PRESERVE_STATE is true, or if a container was previously initialized
-	if !isPreserveState() {
-		var toDelete []passType
-		for container := range resources {
-			if container.preExists {
-				log.Printf("tear down: preserving contents of pre-existing container %s", container.containerName)
-			} else {
-				log.Printf("tear down: removing container %s per %s=%s", container.containerName, env.IT_PRESERVE_STATE, environment.ItPreserveState)
-				toDelete = append(toDelete, container)
-			}
-		}
-		for _, container := range toDelete {
-			if err != nil {
-				log.Fatalf("error cleaning up state: %s", err)
-			}
-			var req *http.Request
-			req, err = http.NewRequest("DELETE", fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, container.containerName), nil)
-			req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-			_, err = httpClient.Do(req)
-			req, err = http.NewRequest("DELETE", fmt.Sprintf("%s/%s/fcr:tombstone", environment.FcrepoBaseUri, container.containerName), nil)
-			req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-			_, err = httpClient.Do(req)
-		}
-	} else {
-		log.Printf("tear down: preserving contents of Fedora per %s=%s", env.IT_PRESERVE_STATE, environment.ItPreserveState)
-	}
+	cleanup()
 
 	os.Exit(exitCode)
-}
-
-// Returns a MatchHandler that records it had been executed (i.e. the query processor invoked the handler), the number
-// of times it was executed, and records all of the URIs found in the match and the number of times they are seen.  If
-// the optional Store is provided, then the duplicates will be recorded in the persistence store.
-func matchHandler(t *testing.T, executed *bool, timeInvoked *int, duplicateUris *map[string]int, store *persistence.Store) query.MatchHandler {
-	return func(result interface{}) (bool, error) {
-		match := result.(query.Match)
-		*executed = true
-		*timeInvoked++
-		localDuplicatesMap := make(map[string]int)
-		for _, matchingUri := range match.MatchingUris {
-			if match.UriPathsEqual(matchingUri, match.PassUri) {
-				continue
-			}
-			if _, contains := localDuplicatesMap[matchingUri]; contains {
-				localDuplicatesMap[matchingUri]++
-			} else {
-				localDuplicatesMap[matchingUri] = 1
-			}
-		}
-
-		if store != nil {
-			for candidateDupe := range localDuplicatesMap {
-				// The resource should never be a duplicate with itself
-				assert.NotEqual(t, match.StripBaseUri(match.PassUri), match.StripBaseUri(candidateDupe))
-				if err := (*store).StoreDupe(match.StripBaseUri(match.PassUri), match.StripBaseUri(candidateDupe), match.PassType, match.MatchFields, match.MatchValues[candidateDupe], persistence.DupeContainerAttributes{
-					SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
-					SourceCreated:        match.ContainerProperties.SourceCreated,
-					SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
-					SourceLastModified:   match.ContainerProperties.SourceLastModified,
-				}); err != nil {
-					return false, err
-				}
-			}
-		}
-
-		for dupeUri, localCount := range localDuplicatesMap {
-			if count, exists := (*duplicateUris)[dupeUri]; exists {
-				(*duplicateUris)[dupeUri] = count + localCount
-			} else {
-				(*duplicateUris)[dupeUri] = localCount
-			}
-		}
-
-		return false, nil
-	}
 }
 
 func Test_DuplicateQuerySuite(t *testing.T) {
@@ -726,39 +503,12 @@ func findDuplicateJournal(t *testing.T) {
 	assert.Equal(t, 5, result.times)      // the match handler executed once for each query that was performed.
 }
 
-type duplicateTestResult struct {
-	dupes         map[string]int
-	executed      bool
-	expectedTimes int
-	times         int
-}
-
 func findDuplicate(t *testing.T, dtr *duplicateTestResult, store *persistence.Store, plan query.Plan, passType passType,
 	containerHandler visit.ContainerHandler, eventHandler visit.EventHandler) {
 	matchHandler := matchHandler(t, &dtr.executed, &dtr.times, &dtr.dupes, store)
 	startUri := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, passType.containerName)
 	passTypeUri := passType.typeUri
 	executeQueryPlan(t, plan, startUri, passTypeUri, matchHandler, nil, nil)
-}
-
-func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passType string, matchHandler query.MatchHandler, containerHandler visit.ContainerHandler, eventHandler visit.EventHandler) {
-	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "test_findDuplicateJournal")
-	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
-	assert.Nil(t, err)
-
-	controller := visit.NewController(retriever, maxReq)
-	controller.ErrorHandler(visit.NoopErrorHandler)
-	if eventHandler == nil {
-		controller.EventHandler(visit.NoopEventHandler)
-	} else {
-		controller.EventHandler(eventHandler)
-	}
-	if containerHandler == nil {
-		controller.ContainerHandler(defaultContainerHandler(t, queryPlan, passType, matchHandler))
-	} else {
-		controller.ContainerHandler(containerHandler)
-	}
-	controller.Begin(startUri, visit.AcceptAllFilter, visit.AcceptAllFilter)
 }
 
 func craftDuplicateSubmissionWithDuplicatePublications(t *testing.T) {
@@ -860,80 +610,6 @@ func craftDuplicateSubmissionWithDuplicatePublications(t *testing.T) {
 	}
 }
 
-// Copies the content from sourceUri, transforms the triples, and PUTs a new resource with the transformed content
-// at targetUri.
-//
-// The only valid combination to perform a copy of an RDF resource with knakk/rdf is to use N-Triples serialization in
-// combination with PUT.  It is particularly difficult to transform the RDF of the resource to be copied, especially
-// because knakk/rdf does not allow for null relative URIs.
-func copyFedoraResource(t *testing.T, environment env.Env, sourceUri, targetUri string, transformer func(triples *[]*rdf.Triple)) string {
-	var req *http.Request
-	var res *http.Response
-	var trips []rdf.Triple
-	var err error
-
-	req, err = http.NewRequest("GET", sourceUri, nil)
-	assert.Nil(t, err)
-	req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-	req.Header.Add("Accept", "application/n-triples")
-
-	res, err = httpClient.Do(req)
-	defer func() { _ = res.Body.Close() }()
-	assert.Nil(t, err)
-
-	b := bytes.Buffer{}
-	_, err = io.Copy(&b, res.Body)
-	assert.Nil(t, err)
-	assert.True(t, res.StatusCode == 200, err)
-
-	var filteredTrips []*rdf.Triple
-	filteredResource := bytes.Buffer{}
-	trips, err = rdf.NewTripleDecoder(&b, rdf.Turtle).DecodeAll()
-	assert.True(t, len(trips) > 0)
-
-	for i := range trips {
-		t := trips[i]
-		if strings.HasPrefix(t.Pred.String(), model.PassResourceUriPrefix) ||
-			strings.HasPrefix(t.Obj.String(), model.PassResourceUriPrefix) {
-			filteredTrips = append(filteredTrips, &t)
-		}
-	}
-
-	// replace the subject
-	subject, _ := rdf.NewIRI(targetUri)
-	for i := range filteredTrips {
-		filteredTrips[i] = &rdf.Triple{Subj: subject, Pred: filteredTrips[i].Pred, Obj: filteredTrips[i].Obj}
-	}
-
-	transformer(&filteredTrips)
-	filteredTrips = removeNils(&filteredTrips)
-
-	filteredResource = bytes.Buffer{}
-	encoder := rdf.NewTripleEncoder(&filteredResource, rdf.NTriples)
-	var toEncode []rdf.Triple
-	for _, triple := range filteredTrips {
-		toEncode = append(toEncode, *triple)
-	}
-	err = encoder.EncodeAll(toEncode)
-	assert.Nil(t, err)
-	_ = encoder.Close()
-
-	log.Printf("Replaced copy:\n%s", filteredResource.String())
-
-	req, err = http.NewRequest("PUT", targetUri, bytes.NewReader(filteredResource.Bytes()))
-	assert.Nil(t, err)
-	req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-	req.Header.Add("Content-Type", "application/n-triples")
-
-	res, err = httpClient.Do(req)
-	defer func() { _ = res.Body.Close() }()
-	assert.Nil(t, err)
-	assert.True(t, res.StatusCode == 201, fmt.Sprintf("status code: %v, error: %v", res.StatusCode, err))
-	b = bytes.Buffer{}
-	_, err = io.Copy(&b, res.Body)
-	return string(b.Bytes())
-}
-
 var defaultContainerHandler = func(t *testing.T, queryPlan query.Plan, passType string, matchHandler query.MatchHandler) func(c model.LdpContainer) {
 	return func(c model.LdpContainer) {
 		log.Printf(">> Container: %s (%s)", c.Uri(), c.PassType())
@@ -955,79 +631,49 @@ var defaultContainerHandler = func(t *testing.T, queryPlan query.Plan, passType 
 	}
 }
 
-// Attempts to replace the content of the Fedora resource at 'uri' with the content in 'body' described by 'mediaType'.
-// Note: if a resource already exists at 'uri', this func will DELETE it, and then PUT a new resource; SPARQL update is
-// not used.
-func replaceFedoraResource(t *testing.T, environment env.Env, uri string, body []byte, mediaType string) (err error) {
-	var (
-		req *http.Request
-		res *http.Response
-	)
-
-	// Delete the resource at 'uri' if it exists, and get rid of the tombstone.
-	if req, err = http.NewRequest("HEAD", uri, nil); err != nil {
-		return err
-	}
-	req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-	if res, err = httpClient.Do(req); err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode <= 300 {
-		// delete the existing resource
-		if req, err = http.NewRequest("DELETE", uri, nil); err != nil {
-			return err
+// Returns a MatchHandler that records it had been executed (i.e. the query processor invoked the handler), the number
+// of times it was executed, and records all of the URIs found in the match and the number of times they are seen.  If
+// the optional Store is provided, then the duplicates will be recorded in the persistence store.
+func matchHandler(t *testing.T, executed *bool, timeInvoked *int, duplicateUris *map[string]int, store *persistence.Store) query.MatchHandler {
+	return func(result interface{}) (bool, error) {
+		match := result.(query.Match)
+		*executed = true
+		*timeInvoked++
+		localDuplicatesMap := make(map[string]int)
+		for _, matchingUri := range match.MatchingUris {
+			if match.UriPathsEqual(matchingUri, match.PassUri) {
+				continue
+			}
+			if _, contains := localDuplicatesMap[matchingUri]; contains {
+				localDuplicatesMap[matchingUri]++
+			} else {
+				localDuplicatesMap[matchingUri] = 1
+			}
 		}
-		req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-		if res, err = httpClient.Do(req); err != nil {
-			return err
+
+		if store != nil {
+			for candidateDupe := range localDuplicatesMap {
+				// The resource should never be a duplicate with itself
+				assert.NotEqual(t, match.StripBaseUri(match.PassUri), match.StripBaseUri(candidateDupe))
+				if err := (*store).StoreDupe(match.StripBaseUri(match.PassUri), match.StripBaseUri(candidateDupe), match.PassType, match.MatchFields, match.MatchValues[candidateDupe], persistence.DupeContainerAttributes{
+					SourceCreatedBy:      match.ContainerProperties.SourceCreatedBy,
+					SourceCreated:        match.ContainerProperties.SourceCreated,
+					SourceLastModifiedBy: match.ContainerProperties.SourceLastModifiedBy,
+					SourceLastModified:   match.ContainerProperties.SourceLastModified,
+				}); err != nil {
+					return false, err
+				}
+			}
 		}
-		defer res.Body.Close()
-		if req, err = http.NewRequest("DELETE", fmt.Sprintf("%s/fcr:tombstone", uri), nil); err != nil {
-			return err
+
+		for dupeUri, localCount := range localDuplicatesMap {
+			if count, exists := (*duplicateUris)[dupeUri]; exists {
+				(*duplicateUris)[dupeUri] = count + localCount
+			} else {
+				(*duplicateUris)[dupeUri] = localCount
+			}
 		}
-		req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-		if res, err = httpClient.Do(req); err != nil {
-			return err
-		}
-		defer res.Body.Close()
-	}
 
-	// PUT the 'body' at 'uri'
-	if req, err = http.NewRequest("PUT", uri, bytes.NewReader(body)); err != nil {
-		return err
+		return false, nil
 	}
-	req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
-	req.Header.Add("Content-Type", mediaType)
-	if res, err = httpClient.Do(req); err != nil {
-		return err
-	}
-	assert.True(t, res.StatusCode < 300)
-	return err
-}
-
-// Culls nil elements from the provided slice
-func removeNils(trips *[]*rdf.Triple) []*rdf.Triple {
-	var result []*rdf.Triple
-	for i := range *trips {
-		if (*trips)[i] != nil {
-			result = append(result, (*trips)[i])
-		}
-	}
-
-	return result
-}
-
-// Answers the value of the env.IT_PRESERVE_STATE environment variable.  If 'true', then the IT should attempt to
-// preserve the state of the test after it completes.
-//
-// Normally env.IT_PRESERVE_STATE would only be set for the execution of a single test.
-func isPreserveState() bool {
-	if preserveState, err := strconv.ParseBool(environment.ItPreserveState); err != nil {
-		log.Fatalf("Invalid value for %s: %s", env.IT_PRESERVE_STATE, environment.ItPreserveState)
-	} else {
-		return preserveState
-	}
-
-	return false
 }
