@@ -844,3 +844,7 @@ func matchHandler(t *testing.T, executed *bool, timeInvoked *int, duplicateUris 
 		return false, nil
 	}
 }
+
+func Test_Cleanup(t *testing.T) {
+	cleanup()
+}
