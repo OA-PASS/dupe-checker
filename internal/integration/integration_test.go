@@ -47,7 +47,7 @@ var (
 	// the http client shared by the ITs
 	httpClient http.Client
 	// the persistence store shared by the ITs
-	sharedStore persistence.Store
+	sharedStore *persistence.Store
 	// the environment shared by the ITs
 	environment = env.New()
 	err         error
@@ -157,19 +157,14 @@ func TestMain(m *testing.M) {
 	}
 	checkDependentServices(&serviceDeps)
 
-	initializeContainersAndResources()
-
-	createPersistenceStore()
-
 	// call flag.Parse() here if TestMain uses flags
-	exitCode := m.Run()
-
-	cleanup()
-
-	os.Exit(exitCode)
+	os.Exit(m.Run())
 }
 
 func Test_DuplicateQuerySuite(t *testing.T) {
+	initializeContainersAndResources()
+	createPersistenceStore()
+
 	t.Run("Duplicates Test Suite", func(t *testing.T) {
 		t.Run("duplicateFunder", findDuplicateFunder)
 		t.Run("duplicateGrant", findDuplicateGrant)
@@ -183,13 +178,20 @@ func Test_DuplicateQuerySuite(t *testing.T) {
 		t.Run("duplicateSubmission", findDuplicateSubmission)
 		t.Run("duplicateUser", findDuplicateUser)
 	})
+
+	cleanup()
 }
 
 func Test_DuplicateRun(t *testing.T) {
+	initializeContainersAndResources()
+	createPersistenceStore()
+
 	t.Run("Duplicate Test Run", func(t *testing.T) {
 		t.Run("duplicatePubsAndUsers", findDuplicatePublicationsAndUsers)
 		t.Run("duplicateAllTheRest", findDuplicateAllTheRest)
 	})
+
+	cleanup()
 }
 
 func Test_QueryExpansion(t *testing.T) {
@@ -223,14 +225,14 @@ func findDuplicatePublicationsAndUsers(t *testing.T) {
 		panic(err.Error())
 	}
 
-	plan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanPubsAndUsers)
+	plan := query.NewPlanDecoder(sharedStore).Decode(queryPlanPubsAndUsers)
 	//log.Printf("Query plan: %s", plan)
 
 	// store candidate duplicate uris and their type in the database
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
 	times := 0
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, &sharedStore)
+	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, sharedStore)
 
 	// descend into all containers that are not pass resources or acls
 	filterFn := func(c model.LdpContainer) bool {
@@ -311,14 +313,14 @@ func findDuplicateAllTheRest(t *testing.T) {
 		panic(err.Error())
 	}
 
-	plan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)
+	plan := query.NewPlanDecoder(sharedStore).Decode(queryPlanAllTheRest)
 	//log.Printf("Query plan: %s", plan)
 
 	// store candidate duplicate uris and their type in the database
 	handlerExecuted := false
 	potentialDuplicates := map[string]int{}
 	times := 0
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, &sharedStore)
+	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, sharedStore)
 
 	// descend into all containers that are not pass resources or acls
 	filterFn := func(c model.LdpContainer) bool {
@@ -409,10 +411,10 @@ func findDuplicateAllTheRest(t *testing.T) {
 
 func findDuplicateSubmission(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
+	queryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
 	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("Submission"), nil, nil)
+	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("Submission"), nil, nil)
 
 	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 4, result.times)
@@ -421,10 +423,10 @@ func findDuplicateSubmission(t *testing.T) {
 
 func findDuplicateUser(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanPubsAndUsers)[model.PassTypeUser]
+	queryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanPubsAndUsers)[model.PassTypeUser]
 	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("User"), nil, nil)
+	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("User"), nil, nil)
 
 	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, result.times)
@@ -433,10 +435,10 @@ func findDuplicateUser(t *testing.T) {
 
 func findDuplicateRepoCopy(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeRepositoryCopy]
+	queryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeRepositoryCopy]
 	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("RepositoryCopy"), nil, nil)
+	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("RepositoryCopy"), nil, nil)
 
 	assert.True(t, result.executed)       // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 4, result.times)      // one query for each resource plus an additional query for the resource with both the url and the publication
@@ -445,10 +447,10 @@ func findDuplicateRepoCopy(t *testing.T) {
 
 func findDuplicateGrant(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeGrant]
+	queryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeGrant]
 	result := duplicateTestResult{dupes: map[string]int{}}
 
-	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("Grant"), nil, nil)
+	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("Grant"), nil, nil)
 
 	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, result.times)
@@ -457,10 +459,10 @@ func findDuplicateGrant(t *testing.T) {
 
 func findDuplicateFunder(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeFunder]
+	queryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeFunder]
 	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("Funder"), nil, nil)
+	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("Funder"), nil, nil)
 
 	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 2, result.times)
@@ -469,10 +471,10 @@ func findDuplicateFunder(t *testing.T) {
 
 func findDuplicatePublication(t *testing.T) {
 	t.Parallel()
-	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanPubsAndUsers)[model.PassTypePublication]
+	queryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanPubsAndUsers)[model.PassTypePublication]
 	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("Publication"), nil, nil)
+	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("Publication"), nil, nil)
 
 	assert.True(t, result.executed)       // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
 	assert.Equal(t, 6, result.times)      // 1 query each for four resources, plus a two additional queries for the resource with all three properties
@@ -481,10 +483,10 @@ func findDuplicatePublication(t *testing.T) {
 
 func findDuplicateJournalSimple(t *testing.T) {
 	t.Parallel()
-	journalQueryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanSimpleJournal)[model.PassTypeJournal]
+	journalQueryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanSimpleJournal)[model.PassTypeJournal]
 	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	findDuplicate(t, &result, &sharedStore, journalQueryPlan, *typeContainers.get("Journal"), nil, nil)
+	findDuplicate(t, &result, sharedStore, journalQueryPlan, *typeContainers.get("Journal"), nil, nil)
 
 	assert.True(t, result.executed)  // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
 	assert.Equal(t, 2, result.times) // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
@@ -493,10 +495,10 @@ func findDuplicateJournalSimple(t *testing.T) {
 
 func findDuplicateJournal(t *testing.T) {
 	t.Parallel()
-	journalQueryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeJournal]
+	journalQueryPlan := query.NewPlanDecoder(sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeJournal]
 	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	findDuplicate(t, &result, &sharedStore, journalQueryPlan, *typeContainers.get("Journal"), nil, nil)
+	findDuplicate(t, &result, sharedStore, journalQueryPlan, *typeContainers.get("Journal"), nil, nil)
 
 	assert.True(t, result.executed)       // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
 	assert.Equal(t, 3, len(result.dupes)) // we expect three potential duplicates; the journal with the single ISSN won't be found because we exact match on ISSNs, this is a TODO/FIXME

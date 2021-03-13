@@ -246,7 +246,7 @@ func createPersistenceStore() {
 			log.Printf("setup: preserving database state at %s per %s=%s", f.Name(), env.IT_PRESERVE_STATE, environment.ItPreserveState)
 		}
 	} else {
-		storeDsn = ":memory:"
+		storeDsn = "file::memory:?cache=shared"
 	}
 	if store, err := persistence.NewSqlLiteStore(storeDsn, persistence.SqliteParams{
 		MaxIdleConn: 4,
@@ -254,7 +254,8 @@ func createPersistenceStore() {
 	}, nil); err != nil {
 		log.Fatalf("Error creating persistence.Store: %s", err)
 	} else {
-		sharedStore = persistence.NewRetrySqliteStore(store, 500*time.Millisecond, 1.2, 5, sqlite3.ErrLocked, sqlite3.ErrBusy)
+		s := persistence.NewRetrySqliteStore(store, 500*time.Millisecond, 1.2, 5, sqlite3.ErrLocked, sqlite3.ErrBusy)
+		sharedStore = &s
 	}
 }
 
