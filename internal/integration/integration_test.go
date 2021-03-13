@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/knakk/rdf"
+	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"log"
@@ -308,7 +309,7 @@ func TestMain(m *testing.M) {
 	}, nil); err != nil {
 		log.Fatalf("Error creating persistence.Store: %s", err)
 	} else {
-		sharedStore = store
+		sharedStore = persistence.NewRetrySqliteStore(store, 500*time.Millisecond, 1.2, 5, sqlite3.ErrLocked, sqlite3.ErrBusy)
 	}
 
 	// call flag.Parse() here if TestMain uses flags
@@ -937,8 +938,13 @@ var defaultContainerHandler = func(t *testing.T, queryPlan query.Plan, passType 
 			// note that if the container URI has been flagged as a duplicate in a previous invocation, then this
 			// invocation is redundant
 			if _, err := queryPlan.Execute(c, matchHandler); err != nil {
+				switch {
 				// allow for errors where keys cannot be extracted, this is to be expected with our tests
-				if !errors.Is(err, query.ErrMissingRequiredKey) {
+				case errors.Is(err, query.ErrMissingRequiredKey):
+				// allow for errors where there may be a constraint violation; this is a consequence of using a shared
+				// persistence store and running tests in parallel.
+				case errors.Is(err, persistence.ErrConstraint):
+				default:
 					assert.Failf(t, "Error performing query: %s", err.Error())
 				}
 			}
