@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/knakk/rdf"
+	"github.com/logrusorgru/aurora/v3"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"log"
@@ -158,9 +159,10 @@ func TestMain(m *testing.M) {
 	checkDependentServices(&serviceDeps)
 
 	if isPreserveState() {
-		log.Printf("***Warning*** %s is %s: state in the Fedora repository is carried over between test "+
-			"suites, and may introduce false negatives if running more than one test suite at a time.",
-			env.IT_PRESERVE_STATE, environment.ItPreserveState)
+		log.Printf(aurora.Sprintf("%s %s %s env var %s is %s: state in the Fedora repository is carried over "+
+			"between test suites, and may introduce false negatives if running more than one test suite at a time.",
+			aurora.BgRed("***"), aurora.Red("WARNING"), aurora.BgRed("***"),
+			aurora.BrightGreen(env.IT_PRESERVE_STATE), aurora.Green(environment.ItPreserveState)))
 	}
 
 	// call flag.Parse() here if TestMain uses flags

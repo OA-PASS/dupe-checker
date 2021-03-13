@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/knakk/rdf"
+	"github.com/logrusorgru/aurora/v3"
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -109,13 +110,13 @@ func checkDependentServices(serviceDeps *map[string]bool) {
 				start := time.Now()
 
 				for !timedout(start, timeout) {
-					fmt.Printf("Dialing %v\n", hostAndPort)
+					fmt.Printf(aurora.Sprintf(aurora.Green("Dialing %v\n"), hostAndPort))
 					if c, err := net.Dial("tcp", hostAndPort); err == nil {
 						_ = c.Close()
 						mu.Lock()
 						(*serviceDeps)[hostAndPort] = true
 						mu.Unlock()
-						fmt.Printf("Successfully connected to %v\n", hostAndPort)
+						fmt.Print(aurora.Sprintf(aurora.Green("Successfully connected to %v\n"), hostAndPort))
 						wg.Done()
 						break
 					} else {
@@ -133,7 +134,7 @@ func checkDependentServices(serviceDeps *map[string]bool) {
 
 		for k, v := range *serviceDeps {
 			if !v {
-				fmt.Printf("failed to connect to %v", k)
+				fmt.Printf(aurora.Sprintf(aurora.Red("failed to connect to %v"), k))
 				os.Exit(-1)
 			}
 		}
@@ -150,7 +151,7 @@ func initializeContainersAndResources() {
 		url := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, containerName)
 		req, _ := http.NewRequest("HEAD", url, nil)
 		if err := perform(req, 200); err == nil {
-			log.Printf("setup: container %s already exists.  Skipping initialization.", url)
+			log.Println(aurora.Sprintf(aurora.Green("setup: container %s already exists.  Skipping initialization."), url))
 			typeContainer.preExists = true
 			req, _ = http.NewRequest("GET", url, nil)
 			req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
@@ -186,7 +187,7 @@ func initializeContainersAndResources() {
 		if err := perform(req, 201); err != nil {
 			log.Fatalf("Error creating container %s: %s", url, err.Error())
 		} else {
-			log.Printf("setup: created container %s", url)
+			log.Print(aurora.Sprintf(aurora.Green("setup: created container %s"), url))
 		}
 
 		// Create resources in Fedora for the given container, at least two duplicates of each resource:
@@ -226,7 +227,7 @@ func initializeContainersAndResources() {
 				log.Fatalf("Error creating repository resource under %s from %s: %s", url,
 					testResource.Name(), err.Error())
 			} else {
-				log.Printf("setup: created test resource in repository under %s from %s", url, testResource.Name())
+				log.Println(aurora.Sprintf(aurora.Green("setup: created test resource in repository under %s from %s"), url, testResource.Name()))
 			}
 		}
 	}
@@ -240,10 +241,11 @@ func createPersistenceStore() {
 
 	if isPreserveState() {
 		if f, e := os.CreateTemp("", "passrdcit-*.db"); e != nil {
-			log.Fatalf("error creating temporary file for database: %s", e)
+			log.Fatal(aurora.Sprintf(aurora.Red("error creating temporary file for database: %s"), e))
 		} else {
 			storeDsn = fmt.Sprintf("file:%s", f.Name())
-			log.Printf("setup: preserving database state at %s per %s=%s", f.Name(), env.IT_PRESERVE_STATE, environment.ItPreserveState)
+			log.Println(aurora.Sprintf(aurora.Green("setup: preserving database state at %s per %s=%s"),
+				f.Name(), env.IT_PRESERVE_STATE, environment.ItPreserveState))
 		}
 	} else {
 		storeDsn = "file::memory:?cache=shared"
@@ -267,26 +269,19 @@ func createPersistenceStore() {
 
 		s := persistence.NewRetrySqliteStore(store, time.Duration(retryIntervalMs)*time.Millisecond, 1.2, maxTries, sqlite3.ErrLocked, sqlite3.ErrBusy)
 		sharedStore = &s
-		log.Printf("Initialized %T@%p", sharedStore, sharedStore)
+		log.Println(aurora.Sprintf(aurora.Green("Initialized %T@%p"), sharedStore, sharedStore))
 	}
 }
 
 func cleanup() {
 	// Empty out the repository unless IT_PRESERVE_STATE is true, or if a container was previously initialized
 	if !isPreserveState() {
+		log.Println(aurora.Green("tear down: removing resources from Fedora"))
 		var toDelete []passType
 		for container := range resources {
-			if container.preExists {
-				log.Printf("tear down: preserving contents of pre-existing container %s", container.containerName)
-			} else {
-				log.Printf("tear down: removing container %s per %s=%s", container.containerName, env.IT_PRESERVE_STATE, environment.ItPreserveState)
-				toDelete = append(toDelete, container)
-			}
+			toDelete = append(toDelete, container)
 		}
 		for _, container := range toDelete {
-			if err != nil {
-				log.Fatalf("error cleaning up state: %s", err)
-			}
 			var req *http.Request
 			req, err = http.NewRequest("DELETE", fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, container.containerName), nil)
 			req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
@@ -294,9 +289,13 @@ func cleanup() {
 			req, err = http.NewRequest("DELETE", fmt.Sprintf("%s/%s/fcr:tombstone", environment.FcrepoBaseUri, container.containerName), nil)
 			req.SetBasicAuth(environment.FcrepoUser, environment.FcrepoPassword)
 			_, err = httpClient.Do(req)
+			if err != nil {
+				log.Fatal(aurora.Red(fmt.Sprintf("error cleaning up state: %s", err)))
+			}
 		}
 	} else {
-		log.Printf("tear down: preserving contents of Fedora per %s=%s", env.IT_PRESERVE_STATE, environment.ItPreserveState)
+		log.Println(aurora.Sprintf(aurora.Green("tear down: preserving contents of Fedora per %s=%s"),
+			env.IT_PRESERVE_STATE, environment.ItPreserveState))
 	}
 }
 
