@@ -157,6 +157,12 @@ func TestMain(m *testing.M) {
 	}
 	checkDependentServices(&serviceDeps)
 
+	if isPreserveState() {
+		log.Printf("***Warning*** %s is %s: state in the Fedora repository is carried over between test "+
+			"suites, and may introduce false negatives if running more than one test suite at a time.",
+			env.IT_PRESERVE_STATE, environment.ItPreserveState)
+	}
+
 	// call flag.Parse() here if TestMain uses flags
 	os.Exit(m.Run())
 }
