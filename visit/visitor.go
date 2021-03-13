@@ -29,6 +29,12 @@ import (
 	"sync"
 )
 
+type ContainerHandler func(model.LdpContainer)
+
+type EventHandler func(Event)
+
+type ErrorHandler func(error)
+
 // A handler implementation which does nothing with its argument
 var NoopEventHandler = func(e Event) {}
 
@@ -203,14 +209,27 @@ func (v ConcurrentVisitor) walkInternal(c model.LdpContainer, filter, accept fun
 	v.Events <- Event{c.Uri(), EventDescendEndContainer, fmt.Sprintf("ENDCONTAINER: %s", c.Uri())}
 }
 
+// Presents a facade of ConcurrentVisitor, insuring that the necessary channels and other concurrency-related state is
+// managed appropriately (e.g. sync.WaitGroup and channel communication).
+//
+// Once initialized by NewController, an instance of Controller may be re-used; that is, Begin may be invoked multiple
+// times.  The Controller is not safe for for concurrent use; it may only be invoked by one goroutine at a time.
 type Controller struct {
 	wg              sync.WaitGroup
-	errorReader     func(e error)
-	eventReader     func(e Event)
-	containerReader func(c model.LdpContainer)
+	errorReader     ErrorHandler
+	eventReader     EventHandler
+	containerReader ContainerHandler
 	visitor         ConcurrentVisitor
 }
 
+// Initializes a Controller with the supplied retriever, allowing at most maxConcurrentRequests to be executed at any
+// given time.  Once initialized by NewController, an instance of Controller may be re-used; that is, Begin may be
+// invoked multiple times.  The Controller is not safe for for concurrent use; it may only be invoked by one
+// goroutine at a time.
+//
+// After initialization, the Controller *must* have an ErrorHandler, EventHandler, and ContainerHandler set, even if
+// the implementation of those types are minimal.  This is because the underlying channels must be drained in order for
+// the visitor to not block up.
 func NewController(r retrieve.Retriever, maxConcurrentRequests int) Controller {
 	c := Controller{
 		visitor: New(r, maxConcurrentRequests),
@@ -218,27 +237,46 @@ func NewController(r retrieve.Retriever, maxConcurrentRequests int) Controller {
 	return c
 }
 
-func (cr *Controller) ErrorHandler(handler func(error)) {
+// Sets the ErrorHandler which is responsible for executing logic associated with errors emitted by the Visitor.
+func (cr *Controller) ErrorHandler(handler ErrorHandler) {
 	if cr.errorReader != nil {
+		// TODO: would be better to provide a minimal, noop impl by default, and allow the client to set their own
+		//   handler if desired.
 		panic("illegal state: existing error handler")
 	}
 	cr.errorReader = handler
 }
 
-func (cr *Controller) EventHandler(handler func(Event)) {
+// Sets the EventHandler which is responsible for executing logic associated with each event emitted by the Visitor.
+func (cr *Controller) EventHandler(handler EventHandler) {
 	if cr.eventReader != nil {
+		// TODO: would be better to provide a minimal, noop impl by default, and allow the client to set their own
+		//   handler if desired.
 		panic("illegal state: existing event handler")
 	}
 	cr.eventReader = handler
 }
 
-func (cr *Controller) ContainerHandler(handler func(model.LdpContainer)) {
+// Sets the ContainerHandler which is responsible for processing each model.Container that is accepted by the Visitor.
+func (cr *Controller) ContainerHandler(handler ContainerHandler) {
 	if cr.containerReader != nil {
+		// TODO: would be better to provide a minimal, noop impl by default, and allow the client to set their own
+		//   handler if desired.
 		panic("illegal state: existing container handler")
 	}
 	cr.containerReader = handler
 }
 
+// Start walking the repository from the supplied URI.  The acceptFn determines if the visitor sends the container to
+// the ContainerHandler; accepted (i.e. acceptFn returns true) containers will be routed to the ContainerHandler.  The
+// filterFn determines if the visitor descends into the provided container.  If it returns 'false', the visitor will
+// not descend into the container or process its children.
+//
+// This method blocks until all resources have been visited and all channels read.  Therefore, it is important that
+// a minimal handler be set for containers, errors, and events, if only to accept the object from the channel.
+//
+// The Controller may be re-used; that is, Begin may be invoked multiple times.  The Controller is not safe for for
+// concurrent use; it may only be invoked by one goroutine at a time.
 func (cr *Controller) Begin(startingUri string, acceptFn func(container model.LdpContainer) bool, filterFn func(container model.LdpContainer) bool) {
 	// FIXME if we wish to make Begin and the underlying visitor re-usable, need to rethink what is exported.
 	cr.visitor.Containers = make(chan model.LdpContainer)

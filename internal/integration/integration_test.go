@@ -54,11 +54,17 @@ var serviceDeps = map[string]bool{
 }
 
 var (
-	httpClient  http.Client
+	// the http client shared by the ITs
+	httpClient http.Client
+	// the persistence store shared by the ITs
 	sharedStore persistence.Store
+	// the environment shared by the ITs
 	environment = env.New()
 	err         error
-	resources   = containerMap(make(map[passType][]string))
+	// A map of resources that are in the repository prior to the execution of tests.  This map may be populated from
+	// existing resources, or resources that were created as part of the initialization in TestMain.  If a container
+	// existed prior to the initialization in TestMain, the passType.preExists flag will be set to true.
+	resources = containerMap(make(map[passType][]string))
 
 	//go:embed *.ttl
 	ttlResources embed.FS
@@ -73,14 +79,27 @@ var (
 	queryPlanAllTheRest string
 )
 
+// Encapsulates static properties regarding a PASS type
 type passType struct {
+	// The name of the container that carries the type, e.g. "submissions", "publications", etc.  Meant to be used
+	// as-is, in combination with env.FcrepoBaseUri to form URIs.
 	containerName string
-	typeName      string
-	preExists     bool
+	// The name of the type, e.g. "Submission", "Publication", etc.  Meant to be used as-is in combination with
+	// model.PassResourceUriPrefix to form URIs, especially the object of the rdf:type predicate.
+	typeName string
+	// The full rdf:type URI of the PASS type, e.g. "http://oapass.org/ns/pass#Submission" or
+	// "http://oapass.org/ns/pass#Publication"
+	typeUri string
+	// Whether the container exists in the Fedora repository upon starting integration tests.  If a container already
+	// exists in the repository, it may be preserved (i.e. not deleted) when the test concludes.
+	preExists bool
 }
 
+// Manages resource URIs keyed by type
 type containerMap map[passType][]string
 
+// Returns a slice of uris associated with the supplied name (e.g. "Submission", "Publication", etc) or type (e.g.
+// "http://oapass.org/ns/pass#Submission" or "http://oapass.org/ns/pass#Publication")
 func (cm containerMap) get(nameOrType string) []string {
 	for passType := range cm {
 		if passType.containerName == nameOrType ||
@@ -91,16 +110,25 @@ func (cm containerMap) get(nameOrType string) []string {
 	return []string{}
 }
 
+// Enumerates the PASS types used by the integration tests and sets their initial values.
 var typeContainers = []passType{
-	{"submissions", "Submission", false},
-	{"publications", "Publication", false},
-	{"users", "User", false},
-	{"repositoryCopies", "RepositoryCopy", false},
-	{"journals", "Journal", false},
-	{"grants", "Grant", false},
-	{"funders", "Funder", false},
+	{"submissions", "Submission", model.PassTypeSubmission, false},
+	{"publications", "Publication", model.PassTypePublication, false},
+	{"users", "User", model.PassTypeUser, false},
+	{"repositoryCopies", "RepositoryCopy", model.PassTypeRepositoryCopy, false},
+	{"journals", "Journal", model.PassTypeJournal, false},
+	{"grants", "Grant", model.PassTypeGrant, false},
+	{"funders", "Funder", model.PassTypeFunder, false},
 }
 
+// Initializes shared resources like the HTTP client and persistence Store used by the ITs, and manages the creation and
+// cleanup of test resources.
+//
+// If a container exists upon startup, then the contents of the container are preserved on shutdown.  Containers (and
+// their contents) are otherwise removed unless the environment variable `IT_PRESERVE_STATE` is 'true'.
+//
+// If `IT_PRESERVE_STATE` is 'true', a new Sqlite database will be initialized and used for the ITs.  Otherwise an in-
+// memory implementation is used.
 func TestMain(m *testing.M) {
 
 	if timeout, err := strconv.Atoi(environment.HttpTimeoutMs); err != nil {
@@ -716,7 +744,21 @@ func findDuplicateJournal(t *testing.T) {
 	assert.Equal(t, 5, times)                    // the match handler executed once for each query that was performed.
 }
 
-func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passType string, matchHandler query.MatchHandler, containerHandler func(model.LdpContainer), eventHandler func(event visit.Event)) {
+type duplicateTestResult struct {
+	dupes         map[string]int
+	executed      bool
+	expectedTimes int
+	times         int
+}
+
+func findDuplicate(t *testing.T, dtr *duplicateTestResult, store *persistence.Store, plan query.Plan, passType passType, containerHandler visit.ContainerHandler, eventHandler visit.EventHandler) {
+	matchHandler := matchHandler(t, &dtr.executed, &dtr.times, &dtr.dupes, store)
+	startUri := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, passType.containerName)
+	passTypeUri := passType.typeUri
+	executeQueryPlan(t, plan, startUri, passTypeUri, matchHandler, nil, nil)
+}
+
+func executeQueryPlan(t *testing.T, queryPlan query.Plan, startUri string, passType string, matchHandler query.MatchHandler, containerHandler visit.ContainerHandler, eventHandler visit.EventHandler) {
 	retriever := retrieve.New(&httpClient, environment.FcrepoUser, environment.FcrepoPassword, "test_findDuplicateJournal")
 	maxReq, err := strconv.Atoi(environment.FcrepoMaxConcurrentRequests)
 	assert.Nil(t, err)
