@@ -98,6 +98,8 @@ type passType struct {
 // Manages resource URIs keyed by type
 type containerMap map[passType][]string
 
+type containerList []passType
+
 // Returns a slice of uris associated with the supplied name (e.g. "Submission", "Publication", etc) or type (e.g.
 // "http://oapass.org/ns/pass#Submission" or "http://oapass.org/ns/pass#Publication")
 func (cm containerMap) get(nameOrType string) []string {
@@ -110,8 +112,18 @@ func (cm containerMap) get(nameOrType string) []string {
 	return []string{}
 }
 
+func (cl containerList) get(nameOrType string) *passType {
+	for _, passType := range cl {
+		if passType.containerName == nameOrType ||
+			passType.typeName == nameOrType {
+			return &passType
+		}
+	}
+	return nil
+}
+
 // Enumerates the PASS types used by the integration tests and sets their initial values.
-var typeContainers = []passType{
+var typeContainers = containerList([]passType{
 	{"submissions", "Submission", model.PassTypeSubmission, false},
 	{"publications", "Publication", model.PassTypePublication, false},
 	{"users", "User", model.PassTypeUser, false},
@@ -119,7 +131,7 @@ var typeContainers = []passType{
 	{"journals", "Journal", model.PassTypeJournal, false},
 	{"grants", "Grant", model.PassTypeGrant, false},
 	{"funders", "Funder", model.PassTypeFunder, false},
-}
+})
 
 // Initializes shared resources like the HTTP client and persistence Store used by the ITs, and manages the creation and
 // cleanup of test resources.
@@ -617,131 +629,97 @@ func findDuplicateAllTheRest(t *testing.T) {
 func findDuplicateSubmission(t *testing.T) {
 	t.Parallel()
 	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeSubmission]
-	//log.Printf("Query plan: %s", queryPlan)
-	handlerExecuted := false
-	potentialDuplicates := map[string]int{}
-	times := 0
+	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, nil)
+	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("Submission"), nil, nil)
 
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "submissions"), "http://oapass.org/ns/pass#Submission", matchHandler, nil, nil)
-	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 4, times)
-	assert.Equal(t, 3, len(potentialDuplicates)) // for the two duplicate User resources
+	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 4, result.times)
+	assert.Equal(t, 3, len(result.dupes)) // for the two duplicate User resources
 }
 
 func findDuplicateUser(t *testing.T) {
 	t.Parallel()
 	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanPubsAndUsers)[model.PassTypeUser]
-	//log.Printf("Query plan: %s", queryPlan)
-	handlerExecuted := false
-	potentialDuplicates := map[string]int{}
-	times := 0
+	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, &sharedStore)
+	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("User"), nil, nil)
 
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "users"), "http://oapass.org/ns/pass#User", matchHandler, nil, nil)
-	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 2, times)
-	assert.Equal(t, 2, len(potentialDuplicates)) // for the two duplicate User resources
+	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 2, result.times)
+	assert.Equal(t, 2, len(result.dupes)) // for the two duplicate User resources
 }
 
 func findDuplicateRepoCopy(t *testing.T) {
 	t.Parallel()
 	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeRepositoryCopy]
-	//log.Printf("Query plan: %s", queryPlan)
-	handlerExecuted := false
-	potentialDuplicates := map[string]int{}
-	times := 0
+	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, nil)
+	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("RepositoryCopy"), nil, nil)
 
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "repositoryCopies"), "http://oapass.org/ns/pass#RepositoryCopy", matchHandler, nil, nil)
-	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 4, times)                    // one query for each resource plus an additional query for the resource with both the url and the publication
-	assert.Equal(t, 3, len(potentialDuplicates)) // for the three duplicate RepoCopy resources
+	assert.True(t, result.executed)       // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 4, result.times)      // one query for each resource plus an additional query for the resource with both the url and the publication
+	assert.Equal(t, 3, len(result.dupes)) // for the three duplicate RepoCopy resources
 }
 
 func findDuplicateGrant(t *testing.T) {
 	t.Parallel()
 	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeGrant]
-	//log.Printf("Query plan: %s", queryPlan)
-	handlerExecuted := false
-	potentialDuplicates := map[string]int{}
-	times := 0
+	result := duplicateTestResult{dupes: map[string]int{}}
 
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, nil)
+	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("Grant"), nil, nil)
 
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "grants"), "http://oapass.org/ns/pass#Grant", matchHandler, nil, nil)
-	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 2, times)
-	assert.Equal(t, 2, len(potentialDuplicates)) // for the two duplicate Funder resources
+	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 2, result.times)
+	assert.Equal(t, 2, len(result.dupes)) // for the two duplicate Funder resources
 }
 
 func findDuplicateFunder(t *testing.T) {
 	t.Parallel()
 	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeFunder]
-	//log.Printf("Query plan: %s", queryPlan)
-	handlerExecuted := false
-	potentialDuplicates := map[string]int{}
-	times := 0
+	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, nil)
+	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("Funder"), nil, nil)
 
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "funders"), "http://oapass.org/ns/pass#Funder", matchHandler, nil, nil)
-	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 2, times)
-	assert.Equal(t, 2, len(potentialDuplicates)) // for the two duplicate Funder resources
+	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 2, result.times)
+	assert.Equal(t, 2, len(result.dupes)) // for the two duplicate Funder resources
 }
 
 func findDuplicatePublication(t *testing.T) {
 	t.Parallel()
 	queryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanPubsAndUsers)[model.PassTypePublication]
-	//log.Printf("Query plan: %s", queryPlan)
-	handlerExecuted := false
-	potentialDuplicates := map[string]int{}
-	times := 0
+	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, &sharedStore)
+	findDuplicate(t, &result, &sharedStore, queryPlan, *typeContainers.get("Publication"), nil, nil)
 
-	executeQueryPlan(t, queryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "publications"), "http://oapass.org/ns/pass#Publication", matchHandler, nil, nil)
-	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 6, times)                    // 1 query each for four resources, plus a two additional queries for the resource with all three properties
-	assert.Equal(t, 4, len(potentialDuplicates)) // for the four duplicate Publication resources
+	assert.True(t, result.executed)       // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
+	assert.Equal(t, 6, result.times)      // 1 query each for four resources, plus a two additional queries for the resource with all three properties
+	assert.Equal(t, 4, len(result.dupes)) // for the four duplicate Publication resources
 }
 
 func findDuplicateJournalSimple(t *testing.T) {
 	t.Parallel()
 	journalQueryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanSimpleJournal)[model.PassTypeJournal]
-	handlerExecuted := false
-	potentialDuplicates := map[string]int{}
-	times := 0
+	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, nil)
+	findDuplicate(t, &result, &sharedStore, journalQueryPlan, *typeContainers.get("Journal"), nil, nil)
 
-	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler, nil, nil)
-	assert.True(t, handlerExecuted) // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
-	assert.Equal(t, 2, times)       // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
-	assert.Equal(t, 2, len(potentialDuplicates))
+	assert.True(t, result.executed)  // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
+	assert.Equal(t, 2, result.times) // for the two Journal resources that contain the 'nlmta' key (the third Journal resource does not)
+	assert.Equal(t, 2, len(result.dupes))
 }
 
 func findDuplicateJournal(t *testing.T) {
 	t.Parallel()
 	journalQueryPlan := query.NewPlanDecoder(&sharedStore).Decode(queryPlanAllTheRest)[model.PassTypeJournal]
-	handlerExecuted := false
-	times := 0
-	potentialDuplicates := map[string]int{}
+	result := duplicateTestResult{dupes: make(map[string]int)}
 
-	// matchHandler is executed once for *each* query
-	//  - we always expect at least one result, because the query that looks for duplicates will find at least the
-	//    original resource
-	//  - any matches beyond that are considered potential duplicates
-	matchHandler := matchHandler(t, &handlerExecuted, &times, &potentialDuplicates, nil)
+	findDuplicate(t, &result, &sharedStore, journalQueryPlan, *typeContainers.get("Journal"), nil, nil)
 
-	executeQueryPlan(t, journalQueryPlan, fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, "journals"), "http://oapass.org/ns/pass#Journal", matchHandler, nil, nil)
-	assert.True(t, handlerExecuted)              // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
-	assert.Equal(t, 3, len(potentialDuplicates)) // we expect three potential duplicates; the journal with the single ISSN won't be found because we exact match on ISSNs, this is a TODO/FIXME
-	assert.Equal(t, 5, times)                    // the match handler executed once for each query that was performed.
+	assert.True(t, result.executed)       // that we executed the handler - and its assertions therein - supplied to the journalQueryPlan at least once
+	assert.Equal(t, 3, len(result.dupes)) // we expect three potential duplicates; the journal with the single ISSN won't be found because we exact match on ISSNs, this is a TODO/FIXME
+	assert.Equal(t, 5, result.times)      // the match handler executed once for each query that was performed.
 }
 
 type duplicateTestResult struct {
@@ -751,7 +729,8 @@ type duplicateTestResult struct {
 	times         int
 }
 
-func findDuplicate(t *testing.T, dtr *duplicateTestResult, store *persistence.Store, plan query.Plan, passType passType, containerHandler visit.ContainerHandler, eventHandler visit.EventHandler) {
+func findDuplicate(t *testing.T, dtr *duplicateTestResult, store *persistence.Store, plan query.Plan, passType passType,
+	containerHandler visit.ContainerHandler, eventHandler visit.EventHandler) {
 	matchHandler := matchHandler(t, &dtr.executed, &dtr.times, &dtr.dupes, store)
 	startUri := fmt.Sprintf("%s/%s", environment.FcrepoBaseUri, passType.containerName)
 	passTypeUri := passType.typeUri
