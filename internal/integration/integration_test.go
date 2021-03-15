@@ -229,7 +229,6 @@ func Test_QueryExpansion(t *testing.T) {
 	// Publication.  So:
 	//   1a. Find the static Submission (call it 's', already in the repo, populated by TestMain) that has a single
 	//       submitter and single publication (call it 'psub1')
-	//   1b. While we're at it, collect 'sprime' as well for use in step 3.
 	req, err = http.NewRequest("GET", fmt.Sprintf("%s?q=%s:%s", environment.IndexSearchBaseUri, "@type", "Submission"), nil)
 	assert.Nil(t, err)
 	res, err = httpClient.Do(req)
@@ -272,23 +271,13 @@ func Test_QueryExpansion(t *testing.T) {
 				continue
 			}
 
-			if found == 1 {
-				sprimeUri = suri
-				sprime, err = rdf.NewTripleDecoder(bytes.NewReader(buf.Bytes()), rdf.NTriples).DecodeAll()
-				assert.Nil(t, err)
-			}
-
-			if found >= 1 {
+			if found >= 0 {
 				break
 			}
 		}
 	}
 	assert.True(t, len(sUri) > 0)
-	assert.True(t, len(sprimeUri) > 0)
-	require.NotEqual(t, sUri, sprimeUri)
 	assert.True(t, len(s) > 0)
-	assert.True(t, len(sprime) > 0)
-	require.NotEqualValues(t, s, sprime)
 
 	//   2a. Update 's' 'psub1' to reference any of the static publications in the repository (by default it points to a
 	//      production PASS uri)
@@ -342,7 +331,7 @@ func Test_QueryExpansion(t *testing.T) {
 	//   3b. Create a *new* resource in the repository from s'
 
 	sprimeUri = fmt.Sprintf("%s/%s/%s", environment.FcrepoBaseUri, "submissions", "dupeSubmission")
-	sprime = copyTriples(sprime, compositeTransformer(
+	sprime = copyTriples(s, compositeTransformer(
 		passTypeFilter(),
 		passPredicateAndObjectFilter(),
 		subjectTransformer("*", sprimeUri),
@@ -382,8 +371,8 @@ func Test_QueryExpansion(t *testing.T) {
 	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("Submission"), nil, nil)
 
 	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 4, result.times)
-	assert.Equal(t, 4, len(result.dupes))
+	assert.Equal(t, 28, result.times)
+	assert.Equal(t, 2, len(result.dupes))
 
 	// visit the repository, marking duplicate users and publications
 	// visit the repository, marking duplicate submissions

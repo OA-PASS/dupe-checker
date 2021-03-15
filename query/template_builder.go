@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/logrusorgru/aurora/v3"
 	"io"
 	"log"
 	"net/http"
@@ -129,6 +130,10 @@ func (kv KvPair) IsMulti() bool {
 	return kv.Key.IsMulti()
 }
 
+func (kv KvPair) String() string {
+	return fmt.Sprintf("{%s, %s}", kv.Key, kv.Value)
+}
+
 type KeyList []KvPair
 
 // Returns a slice of unique Keys in the list
@@ -144,6 +149,17 @@ func (kl KeyList) KeySet() KeySet {
 	}
 
 	return resultSlice
+}
+
+func (kl KeyList) String() string {
+	sb := strings.Builder{}
+	for i, kv := range kl {
+		sb.WriteString(kv.String())
+		if i < len(kl)-1 {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
 }
 
 type KeySet []Key
@@ -176,14 +192,27 @@ func (kv KvPair) Equals(other KvPair) bool {
 
 func expandKvp(kv KvPair, store *persistence.Store) ([]KvPair, error) {
 	var expanded []KvPair
-	if res, err := (*store).ExpandValue(kv.Value); err != nil {
+	var uriPath, strippedBase string
+	environment := env.New()
+	uriPath, strippedBase = env.StripBaseUri(kv.Value, environment.FcrepoBaseUri, environment.FcrepoIndexBaseUri)
+	if res, err := (*store).ExpandValue(uriPath); err != nil {
 		return []KvPair{}, err
 	} else {
-		for i := range res {
-			expanded = append(expanded, KvPair{kv.Key, res[i]})
+		if len(res) > 0 {
+			for i := range res {
+				var value string
+				if strippedBase != "" {
+					value = fmt.Sprintf("%s%s", strippedBase, res[i])
+				} else {
+					value = res[i]
+				}
+				expanded = append(expanded, KvPair{kv.Key, value})
+			}
+		} else {
+			expanded = append(expanded, kv)
 		}
 	}
-
+	log.Printf(aurora.Sprintf(aurora.Green("Expanded KvPair %s to: %s"), aurora.BrightGreen(kv), aurora.BrightGreen(KeyList(expanded))))
 	return expanded, nil
 }
 
@@ -198,6 +227,14 @@ func (qp QueryPairs) Replace(replace KvPair, replacement KvPair) {
 			qp[i] = replacement
 		}
 	}
+}
+
+func (qp QueryPairs) String() string {
+	sb := strings.Builder{}
+	sb.WriteString("QP[")
+	sb.WriteString(KeyList(qp).String())
+	sb.WriteString("]")
+	return sb.String()
 }
 
 func (qp QueryPairs) Clone() QueryPairs {
@@ -236,6 +273,19 @@ func (ep ExpandedPairs) Expand(replace, replacement KvPair) ExpandedPairs {
 	}
 
 	return ExpandedPairs{ep.qps}
+}
+
+func (ep ExpandedPairs) String() string {
+	sb := strings.Builder{}
+	sb.WriteString("EP<")
+	for i, qp := range ep.qps {
+		sb.WriteString(qp.String())
+		if i < len(ep.qps)-1 {
+			sb.WriteString(",\n")
+		}
+	}
+	sb.WriteString(">")
+	return sb.String()
 }
 
 // Encapsulates an ES query and the Keys it requires for evaluation
@@ -557,6 +607,7 @@ func (qt Template) Execute(container model.LdpContainer, handler func(result int
 		log.Printf("Error expanding keys %v: %s", keys, err.Error())
 		return false, err
 	} else {
+		log.Printf(aurora.Sprintf(aurora.Green("Expanded %s to: \n%s"), aurora.BrightGreen(QueryPairs(keys)), aurora.BrightGreen(expandedPairs)))
 		for _, qp := range expandedPairs.qps {
 			if query, err := qt.eval(qp); err != nil {
 				return false, err
