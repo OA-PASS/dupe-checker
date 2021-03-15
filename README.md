@@ -8,14 +8,6 @@ Design-wise, PASS-RDC could have (should have?) been coded to work primarily wit
 
 Presented in approximate priority order with respect to resolution.
 
-### Transitive equivalence of URIs is not implemented
-
-Given that two resources are equivalent, it is understood that the URIs identifying those resources ought to be considered as identifying equivalent resources.  For example, if Publication A and Publication B are equivalent (e.g. they have the same `doi`), then the URI `<Publication A>` should be considered equivalent to URI `<Publisher B>`.  Any resource that references `<Publisher A>` may as well be referencing `<Publisher B>`.  This is very important when evaluating the equivalence of resources where an identity property is a URI, such as the `RepositoryCopy` `publication` or a `Submission` `submitter`.
-
-PASS-RDC does not implement the transitive equivalence of URIs yet.  It is an important feature, but only required if we discover duplicate `Publication` or `User` resources.  If no duplicates exist for these object types, then we don't need to worry about transitive equivalence of URIs, because these two object types are the only ones that may be referenced by other PASS resources.  See the discussion on Identity Properties below.
-
-This should be relatively easy to implement, but at the moment time pressure has tabled this implementation until we know whether or not we have duplicate `Publication` or `User` resources.
-
 ### Queries that target multivalued fields require all values be present to be considered a duplicate
 
 For example, given a `Journal` with two ISSNs, a query for duplicate journals would _require_ the duplicate to have both ISSNs.  Consequently, a potential duplicate that possesses only one of the ISSNs in question would _not_ be found by this query.  This issue affects queries for the `Journal` (`issn`), `Submission` (`preparers`), and `User` (`locatorIds`) type: fields that allow multiple values are affected by this issue.
@@ -34,7 +26,7 @@ In this scenario, the duplicate Journals will not be discovered, because the que
 
 User resources might also be affected by this issue, where there may be up to three values contained in `locatorIds`.  Some `User` resources possess two values for `locatorIds` (missing a `hopkinsId`), while others possess all three.  I haven't seen any User resources with only one value for `locatorIds`. 
 
-### Pausing and resuming is not fully implemented
+### Pausing and resuming is not implemented
 
 While the persistence layer and associated models support the ability to resume, the production code does not persist the progress of PASS-RDC in the local database.  Completing the resume implementation was de-prioritized since the process runs reliably and within a reasonable amount of time.  Finishing the implementation is a TODO.
 
