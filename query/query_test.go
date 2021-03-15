@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"dupe-checker/env"
 	"dupe-checker/model"
+	"dupe-checker/persistence"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -455,6 +456,42 @@ func TestTemplate_ExtractMissingRequiredKeys(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrMissingRequiredKey))
 	assert.True(t, strings.Contains(err.Error(), "moo"))
 	assert.True(t, strings.Contains(err.Error(), "foo"))
+}
+
+func Test_IsAErrExpansionNoValuesFound(t *testing.T) {
+	err := fmt.Errorf("%w for KvPair %s", ErrExpansionNoValuesFound, KvPair{"publication=", "<publication URI>"})
+	assert.True(t, errors.Is(err, ErrExpansionNoValuesFound))
+}
+
+func Test_TemplateBuilderExpand(t *testing.T) {
+	dsn := "file::memory:?cache=shared"
+	var store persistence.Store
+	var err error
+	var ep ExpandedPairs
+
+	if store, err = persistence.NewSqlLiteStore(dsn, persistence.SqliteParams{"", "", 2, 10}, nil); err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	// Attempt expansion when there are no dupes for the KVPairs
+	kvPairs := []KvPair{{"publication=", "<publication URI>"}, {"submitter=", "<submitter URI>"}}
+	qp := QueryPairs(kvPairs)
+	ep, err = expand(qp, &store)
+
+	assert.Equal(t, 1, len(ep.qps))
+	assert.EqualValues(t, kvPairs, ep.qps[0])
+	assert.Nil(t, err)
+
+	// Add a Duplicate Publication URI
+	err = store.StoreDupe("<publication URI>", "<duplicate URI>", "Publication", []string{"publication"}, []string{"<publication URI>"}, persistence.DupeContainerAttributes{})
+	assert.Nil(t, err)
+
+	// Attempt expansion again, now that <publication URI> and <duplicate URI> are considered duplicates.
+	ep, err = expand(qp, &store)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(ep.qps))
+	assert.EqualValues(t, kvPairs, ep.qps[0])
+	assert.EqualValues(t, []KvPair{{"publication=", "<duplicate URI>"}, {"submitter=", "<submitter URI>"}}, ep.qps[1])
 }
 
 func TestTemplate_Execute(t *testing.T) {

@@ -303,10 +303,10 @@ func Test_ExpandValueWithTarget(t *testing.T) {
 	}
 
 	source := "source"
-	dupes := []string{ "dupeA", "dupeB", "dupeC"}
+	dupes := []string{"dupeA", "dupeB", "dupeC"}
 
 	for i := range dupes {
-		store.StoreDupe(source, dupes[i], "type", []string{"matchedOn"}, DupeContainerAttributes{})
+		store.StoreDupe(source, dupes[i], "type", []string{"matchedOn"}, []string{"matchedValue"}, DupeContainerAttributes{})
 	}
 
 	result, err = store.ExpandValue(source)
@@ -325,10 +325,10 @@ func Test_ExpandValueWithSource(t *testing.T) {
 	}
 
 	target := "source"
-	dupes := []string{ "dupeA", "dupeB", "dupeC"}
+	dupes := []string{"dupeA", "dupeB", "dupeC"}
 
 	for i := range dupes {
-		store.StoreDupe(dupes[i], target, "type", []string{"matchedOn"}, DupeContainerAttributes{})
+		store.StoreDupe(dupes[i], target, "type", []string{"matchedOn"}, []string{"matchedValue"}, DupeContainerAttributes{})
 	}
 
 	result, err = store.ExpandValue(target)
@@ -350,17 +350,56 @@ func Test_ExpandValueBidirectional(t *testing.T) {
 
 	sourceDupes := []string{"sourceA", "sourceB", "sourceC"}
 	for i := range sourceDupes {
-		store.StoreDupe(sourceDupes[i], value, "type", []string{"matchedOn"}, DupeContainerAttributes{})
+		store.StoreDupe(sourceDupes[i], value, "type", []string{"matchedOn"}, []string{"matchedValue"}, DupeContainerAttributes{})
 	}
 
 	targetDupes := []string{"targetA", "targetB", "targetC"}
 	for i := range targetDupes {
-		store.StoreDupe(value, targetDupes[i], "type", []string{"matchedOn"}, DupeContainerAttributes{})
+		store.StoreDupe(value, targetDupes[i], "type", []string{"matchedOn"}, []string{"matchedValue"}, DupeContainerAttributes{})
 	}
 
 	result, err = store.ExpandValue(value)
 	assert.Nil(t, err)
 	assert.EqualValues(t, append(sourceDupes, targetDupes...), result)
+}
+
+// ExpandValue should return the original value, even if the value is not expanded.
+func Test_ExpandValueNoExpansion(t *testing.T) {
+	dsn := ":memory:"
+	var store Store
+	var err error
+	var result []string
+
+	if store, err = NewSqlLiteStore(dsn, SqliteParams{"", "", 2, 10}, nil); err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	target := "source"
+	dupes := []string{"value"}
+	store.StoreDupe(dupes[0], target, "type", []string{"matchedOn"}, []string{"matchedValue"}, DupeContainerAttributes{})
+
+	result, err = store.ExpandValue(target)
+	assert.Nil(t, err)
+	assert.EqualValues(t, dupes, result)
+}
+
+// ExpandValue should return the original value, even if a duplicate isn't found
+func Test_ExpandValueNoExpansionNoDupe(t *testing.T) {
+	dsn := ":memory:"
+	var store Store
+	var err error
+	var result []string
+
+	if store, err = NewSqlLiteStore(dsn, SqliteParams{"", "", 2, 10}, nil); err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	target := "source"
+
+	result, err = store.ExpandValue(target)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(result))
+	assert.EqualValues(t, target, result[0])
 }
 
 func Test_ConnhookTest(t *testing.T) {

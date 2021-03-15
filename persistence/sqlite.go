@@ -42,14 +42,14 @@ const (
 	selectLdpcByUri      = "SELECT container, parent, pass, types FROM main.containers WHERE container=?"
 	//TODO inverse field
 	//selectInverseDupe    = "SELECT source,target FROM main.dupes WHERE source=? and target=?"
-	updateStateByUri      = "UPDATE main.containers SET state = ? WHERE container = ?"
-	updateContainerByUri  = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
-	insertState           = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
-	insertContainer       = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
-	insertDupe            = "INSERT INTO main.dupes (source, target, passType, obverseMatchedOn, obverseMatchedValues, sourceCreatedBy, targetCreatedBy, sourceLastModifiedBy, targetLastModifiedBy, sourceCreated, targetCreated, sourceLastModified, targetLastModified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	updateDupeWithInverse = "UPDATE main.dupes SET inverse = true, targetCreatedBy = ?, targetCreated = ?, targetLastModified = ?, targetLastModifiedBy = ? WHERE source = ? AND target = ?"
-	selectDupeForInverse  = "SELECT 1 from main.dupes where source = ? AND target = ?"
-	selectCountFromDupes  = "SELECT count(*) from main.dupes"
+	updateStateByUri       = "UPDATE main.containers SET state = ? WHERE container = ?"
+	updateContainerByUri   = "UPDATE main.containers SET container = ?, parent = ?, pass = ?, types = ?, state = ? WHERE container = ?"
+	insertState            = "INSERT INTO main.containers (container, state) VALUES (?, ?)"
+	insertContainer        = "INSERT INTO main.containers (container, parent, pass, types, state) VALUES (?, ?, ?, ?, ?)"
+	insertDupe             = "INSERT INTO main.dupes (source, target, passType, obverseMatchedOn, obverseMatchedValues, sourceCreatedBy, targetCreatedBy, sourceLastModifiedBy, targetLastModifiedBy, sourceCreated, targetCreated, sourceLastModified, targetLastModified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	updateDupeWithInverse  = "UPDATE main.dupes SET inverse = true, targetCreatedBy = ?, targetCreated = ?, targetLastModified = ?, targetLastModifiedBy = ? WHERE source = ? AND target = ?"
+	selectDupeForInverse   = "SELECT 1 from main.dupes where source = ? AND target = ?"
+	selectCountFromDupes   = "SELECT count(*) from main.dupes"
 	selectTargetFromSource = "SELECT target from main.dupes where source = ?"
 	selectSourceFromTarget = "SELECT source from main.dupes where target = ?"
 	// TODO? selectChildren        = "SELECT container FROM main.containers WHERE parent=?"
@@ -354,6 +354,10 @@ func (store sqlLiteEventStore) ExpandValue(value string) ([]string, error) {
 		}
 	}
 
+	if len(result) == 0 {
+		// There was no duplicate in the table associated with the provided value, return the supplied value
+		result = append(result, value)
+	}
 	return result, nil
 }
 

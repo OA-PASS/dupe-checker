@@ -371,7 +371,7 @@ func Test_QueryExpansion(t *testing.T) {
 	findDuplicate(t, &result, sharedStore, queryPlan, *typeContainers.get("Submission"), nil, nil)
 
 	assert.True(t, result.executed) // that we executed the handler - and its assertions therein - supplied to the queryPlan at least once
-	assert.Equal(t, 28, result.times)
+	assert.Equal(t, 14, result.times)
 	assert.Equal(t, 2, len(result.dupes))
 
 	// visit the repository, marking duplicate users and publications

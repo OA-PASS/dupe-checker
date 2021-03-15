@@ -36,6 +36,7 @@ import (
 
 var ErrMissingRequiredKey = errors.New("query: missing required key(s)")
 var ErrPerformingElasticSearchRequest = errors.New("query: error performing search")
+var ErrExpansionNoValuesFound = errors.New("query: no expanded values found")
 
 // escapes the string to be palatable for an elastic search query
 // exported for test usage
@@ -198,22 +199,27 @@ func expandKvp(kv KvPair, store *persistence.Store) ([]KvPair, error) {
 	if res, err := (*store).ExpandValue(uriPath); err != nil {
 		return []KvPair{}, err
 	} else {
-		if len(res) > 0 {
-			for i := range res {
-				var value string
-				if strippedBase != "" {
-					value = fmt.Sprintf("%s%s", strippedBase, res[i])
-				} else {
-					value = res[i]
-				}
-				expanded = append(expanded, KvPair{kv.Key, value})
+		for i := range res {
+			var value string
+			if strippedBase != "" {
+				value = fmt.Sprintf("%s%s", strippedBase, res[i])
+			} else {
+				value = res[i]
 			}
-		} else {
-			expanded = append(expanded, kv)
+			expanded = append(expanded, KvPair{kv.Key, value})
 		}
 	}
-	log.Printf(aurora.Sprintf(aurora.Green("Expanded KvPair %s to: %s"), aurora.BrightGreen(kv), aurora.BrightGreen(KeyList(expanded))))
-	return expanded, nil
+
+	if len(expanded) > 1 {
+		log.Printf(aurora.Sprintf(aurora.Green("Expanded KvPair %s to: %s"), aurora.BrightGreen(kv), aurora.BrightGreen(KeyList(expanded))))
+		return expanded, nil
+	} else if len(expanded) == 1 && expanded[0].Value == kv.Value {
+		log.Println(aurora.Sprintf(aurora.Green("No expansion for KvPair %s"), aurora.BrightGreen(kv)))
+		return expanded, fmt.Errorf("%w for KvPair %s", ErrExpansionNoValuesFound, kv)
+	} else {
+		log.Printf(aurora.Sprintf(aurora.Green("Expanded KvPair %s to: %s"), aurora.BrightGreen(kv), aurora.BrightGreen(KeyList(expanded))))
+		return expanded, nil
+	}
 }
 
 // QueryPairs is a slice of KvPairs that may be evaluated, resulting in a valid Elastic Search query
@@ -651,7 +657,11 @@ func expand(queryPair QueryPairs, store *persistence.Store) (ExpandedPairs, erro
 			continue
 		}
 		if expandedKey, err := kvp.Expand(store); err != nil {
-			return ExpandedPairs{}, err
+			if errors.Is(err, ErrExpansionNoValuesFound) {
+				continue
+			} else {
+				return ExpandedPairs{}, err
+			}
 		} else {
 			for _, expandedPair := range expandedKey {
 				result = result.Expand(kvp, expandedPair)
