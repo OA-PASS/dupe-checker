@@ -14,8 +14,8 @@ jobs:
 
   call-tests-unit:
     name: Run Unit Tests
-    uses: eclipse-pass/pass-dupe-checker/.github/workflows/tests-unit.yml@main
+    uses: eclipse-pass/pass-dupe-checker/.github/workflows/tests-unit.yml@master
     
 #  call-tests-integration:
 #    name: Run Integration Tests
-#    uses: eclipse-pass/pass-dupe-checker/.github/workflows/tests-integration.yml@main
+#    uses: eclipse-pass/pass-dupe-checker/.github/workflows/tests-integration.yml@master
