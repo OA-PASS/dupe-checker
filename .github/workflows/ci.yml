@@ -16,6 +16,7 @@ jobs:
     name: Run Unit Tests
     uses: eclipse-pass/pass-dupe-checker/.github/workflows/tests-unit.yml@master
     
-#  call-tests-integration:
-#    name: Run Integration Tests
+  call-tests-integration:
+    name: Run Integration Tests
+    run: echo "There currently are no Integration Tests for eclipse-pass/pass-dupe-checker.\nSkipping..."
 #    uses: eclipse-pass/pass-dupe-checker/.github/workflows/tests-integration.yml@master
