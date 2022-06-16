@@ -1,4 +1,4 @@
-name: pass-docker-services Continuous Integration
+name: pass-dupe-checker Continuous Integration
 on: [ pull_request, workflow_dispatch ]
 
 concurrency:
@@ -12,11 +12,32 @@ jobs:
       - run: echo "This is a CI build of branch ${{ github.ref }} in repository ${{ github.repository }}"
       - run: echo "This job was triggered by a ${{ github.event_name }} event and is running on a ${{ runner.os }} server"
 
-  call-tests-unit:
-    name: Run Unit Tests
-    uses: eclipse-pass/pass-dupe-checker/.github/workflows/tests-unit.yml@master
+  run-unit-tests:
+    name: "Run Unit Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout the repository"
+        uses: actions/checkout@v2
+
+      - name: "Setup Go"
+        uses: actions/setup-go@v3
+        with:
+          go-version: '>=1.17.0'
+
+      - name: "Run Unit Tests"
+        run: go test ./...
     
-  call-tests-integration:
-    name: Run Integration Tests
-    run: echo "There currently are no Integration Tests for eclipse-pass/pass-dupe-checker.\nSkipping..."
-#    uses: eclipse-pass/pass-dupe-checker/.github/workflows/tests-integration.yml@master
+#  run-integration-tests:
+#    name: "Run Integration Tests"
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: "Checkout the repository"
+#        uses: actions/checkout@v2
+#
+#      - name: "Setup Go"
+#        uses: actions/setup-go@v3
+#        with:
+#          go-version: '>=1.17.0'
+#
+#      - name: "Run Integration Tests"
+#        run: go test -tags=integration ./...
